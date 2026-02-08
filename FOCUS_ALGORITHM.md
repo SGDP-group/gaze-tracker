@@ -15,14 +15,14 @@ flowchart TD
     C -->|Yes| E[Extract Face Metrics]
     
     E --> F[Calculate Face Angle]
-    F --> G[Update Baseline Angle<br/>WMA: α=0.05]
+    F --> G[Update Baseline Angle<br/>WMA: alpha=0.05]
     G --> H[Calculate Angle Difference]
     
     H --> I{Angle Difference}
     
-    I -->|< 20°| J[State = FOCUSED]
-    I -->|20°-30°| K[State = FOCUSED<br/>Continue Monitoring]
-    I -->|> 30°| L[Start Distraction Timer]
+    I -->|< 20deg| J[State = FOCUSED]
+    I -->|20deg-30deg| K[State = FOCUSED<br/>Continue Monitoring]
+    I -->|> 30deg| L[Start Distraction Timer]
     
     L --> M{Timer > 2 seconds?}
     M -->|No| K
@@ -88,11 +88,11 @@ stateDiagram-v2
     FOCUSED --> AWAY: No face detected
     AWAY --> FOCUSED: Face detected
     
-    FOCUSED --> DISTRACTED: Angle > 30° for 2s
-    DISTRACTED --> FOCUSED: Angle < 20°
+    FOCUSED --> DISTRACTED: Angle > 30deg for 2s
+    DISTRACTED --> FOCUSED: Angle < 20deg
     
-    FOCUSED --> FOCUSED: Angle 20°-30°
-    DISTRACTED --> DISTRACTED: Angle > 30°
+    FOCUSED --> FOCUSED: Angle 20deg-30deg
+    DISTRACTED --> DISTRACTED: Angle > 30deg
 ```
 
 ### 3. Baseline Angle Calibration
@@ -100,8 +100,8 @@ stateDiagram-v2
 ```mermaid
 flowchart TD
     A[Current Angle] --> B[Weighted Moving Average]
-    B --> C[New Baseline = α*Current + (1-α)*Old]
-    C --> D[α = 0.05 (Slow Adaptation)]
+    B --> C[New Baseline = alpha*Current + (1-alpha)*Old]
+    C --> D[alpha = 0.05 (Slow Adaptation)]
     D --> E[Handles Natural Head Movement]
     E --> F[Reduces False Positives]
 ```
@@ -115,7 +115,7 @@ flowchart TD
     A --> D[Presence Ratio]
     A --> E[Context Switches]
     
-    B --> F[σ²(angles)]
+    B --> F[variance(angles)]
     C --> G[1 - CV(angle)]
     D --> H[frames_with_face / total_frames]
     E --> I[state_changes / time]
@@ -190,14 +190,14 @@ sequenceDiagram
 | Frame Rate | 30 FPS | Smooth video processing |
 | Detection Interval | Every frame | Real-time analysis |
 | WMA Alpha | 0.05 | Slow baseline adaptation |
-| Focus Threshold | 20° | Focused angle limit |
-| Distraction Threshold | 30° | Distraction trigger |
+| Focus Threshold | 20deg | Focused angle limit |
+| Distraction Threshold | 30deg | Distraction trigger |
 | Distraction Timer | 2.0 seconds | Confirmation delay |
 
 ### Session Analysis
 | Feature | Formula | Interpretation |
 |---------|---------|-------------|
-| Angle Variance | σ²(angles) | Movement consistency |
+| Angle Variance | variance(angles) | Movement consistency |
 | Stability Score | 1 - CV(angle) | Focus stability |
 | Presence Ratio | face_frames / total | Engagement level |
 | Context Switches | state_changes / time | Attention shifts |
@@ -219,12 +219,12 @@ stateDiagram-v2
     Initializing --> Calibrating: Camera Ready
     Calibrating --> Tracking: Baseline Set
     
-    Tracking --> Focused: |angle| < 20°
-    Tracking --> Distracted: |angle| > 30° for 2s
+    Tracking --> Focused: |angle| < 20deg
+    Tracking --> Distracted: |angle| > 30deg for 2s
     Tracking --> Away: No face detected
     
     Focused --> Tracking: Continuous monitoring
-    Distracted --> Tracking: |angle| < 20°
+    Distracted --> Tracking: |angle| < 20deg
     Away --> Tracking: Face detected
     
     Tracking --> SessionEnd: Duration complete
