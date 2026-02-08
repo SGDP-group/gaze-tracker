@@ -26,6 +26,7 @@ def test_db() -> Generator:
     engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
     
     # Create tables
+    from src.database.models import Base
     Base.metadata.create_all(bind=engine)
     
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -73,8 +74,9 @@ def client(override_get_db) -> Generator:
 @pytest.fixture
 def test_user(db_session) -> User:
     """Create a test user."""
+    import uuid
     user = User(
-        user_id="test_user_123",
+        user_id=f"test_user_{uuid.uuid4().hex[:8]}",
         api_key=generate_api_key()
     )
     db_session.add(user)
@@ -92,9 +94,10 @@ def test_user_headers(test_user) -> Dict[str, str]:
 @pytest.fixture
 def sample_session_data(test_user) -> Dict[str, Any]:
     """Sample session data for testing."""
+    import uuid
     return {
         "user_id": test_user.user_id,
-        "session_id": "test_session_123",
+        "session_id": f"test_session_{uuid.uuid4().hex[:8]}",
         "start_time": datetime.utcnow().isoformat(),
         "end_time": datetime.utcnow().isoformat(),
         "duration_seconds": 1800.0,
@@ -115,11 +118,11 @@ def sample_session_data(test_user) -> Dict[str, Any]:
 
 
 @pytest.fixture
-def sample_feedback_data(test_user) -> Dict[str, Any]:
+def sample_feedback_data(test_user, sample_session_data) -> Dict[str, Any]:
     """Sample feedback data for testing."""
     return {
         "user_id": test_user.user_id,
-        "session_id": "test_session_123",
+        "session_id": sample_session_data["session_id"],
         "productivity_rating": 4,
         "difficulty_rating": 3,
         "energy_level": 4,

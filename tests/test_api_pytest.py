@@ -48,7 +48,7 @@ class TestUserManagement:
         response = client.get("/api/v1/users/me")
         
         assert response.status_code == 401
-        assert "invalid api key" in response.json()["detail"].lower()
+        assert "not authenticated" in response.json()["detail"].lower()
 
 
 class TestSessionManagement:
