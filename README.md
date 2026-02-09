@@ -28,6 +28,20 @@ A comprehensive focus tracking and productivity analysis system using computer v
 - **API Key Authentication** for secure access
 - **Personalized Recommendations** based on historical patterns
 
+### 🎯 Focus Tracking API (New!)
+- **Server-Side Processing** with user separation
+- **Multi-User Support** with isolated sessions
+- **Frame Analysis Endpoint** for client applications
+- **Real-Time Focus State** tracking via HTTP API
+- **Session Management** with automatic cleanup
+
+### 🖥️ Demo Clients (New!)
+- **GUI Demo Client** (Python/Tkinter) with camera integration
+- **Web Demo Client** (HTML/JavaScript) for browser testing
+- **Command Line Client** for programmatic integration
+- **Interactive Buttons** for all API endpoints
+- **Real-Time Response** logging and status updates
+
 ## Project Structure
 
 ```
@@ -45,13 +59,29 @@ gaze_tracker/
 │   └── services/
 │       ├── auth.py              # Authentication service
 │       ├── ml_service.py        # ML pipeline & recommendations
-│       └── api_client.py        # API client for main.py
+│       ├── api_client.py        # API client for main.py
+│       ├── focus_service.py     # Focus tracking API service
+│       ├── celery_app.py        # Celery configuration
+│       └── tasks.py             # Async ML tasks
+├── models/
+│   ├── focus_schemas.py         # Focus API Pydantic models
+│   └── schemas.py               # General API models
 ├── tests/
-│   └── test_api.py              # REST client tests
+│   ├── test_api_pytest.py       # API endpoint tests
+│   ├── test_focus_api.py        # Focus API tests
+│   └── conftest.py              # Pytest configuration
+├── examples/
+│   ├── gui_demo_client.py       # Desktop GUI demo client
+│   ├── web_demo_client.html     # Web-based demo client
+│   ├── focus_client_example.py  # Command-line client
+│   └── README_DEMO_CLIENTS.md   # Demo clients documentation
 ├── data/                        # SQLite database directory
 ├── main.py                      # Main focus tracking application
 ├── utils.py                     # Computer vision utilities
 ├── detector.tflite              # MediaPipe face detection model
+├── docker-compose.yml           # Redis & Redis Commander
+├── celery_worker.py             # Celery worker startup
+├── pytest.ini                   # Pytest configuration
 └── pyproject.toml               # Dependencies
 ```
 
@@ -83,18 +113,57 @@ ls detector.tflite  # Should exist in project root
 
 ## Usage
 
-### 1. Start the API Server (Optional)
-For personalized features and data persistence:
+### 1. Start the API Server
+For focus tracking API and personalized features:
 
 ```bash
 uv run python -m src.api.main
 ```
 
 The API will be available at `http://localhost:8000`
-- API Documentation: `http://localhost:8000/docs`
-- Health Check: `http://localhost:8000/api/v1/health`
+- **API Documentation**: `http://localhost:8000/docs`
+- **Focus API Health**: `http://localhost:8000/api/v1/focus/health`
+- **Interactive Demo**: Open `examples/web_demo_client.html`
 
-### 2. Run Focus Tracking
+### 2. Start Celery Worker (for async training)
+
+```bash
+uv run celery -A src.services.celery_app worker --loglevel=info &
+```
+
+### 3. Test with Demo Clients
+
+#### GUI Demo Client (Desktop)
+```bash
+python examples/gui_demo_client.py
+```
+Features:
+- 🎯 Interactive buttons for all endpoints
+- 📹 Real-time camera integration
+- 📊 Live response logging
+- ⚙️ Configurable API settings
+
+#### Web Demo Client (Browser)
+```bash
+open examples/web_demo_client.html
+```
+Features:
+- 🌐 Modern web interface
+- 📱 Mobile-friendly design
+- 📹 WebRTC camera support
+- 🔄 Auto-send functionality
+
+#### Command Line Client
+```bash
+python examples/focus_client_example.py
+```
+Features:
+- 📹 Webcam demo
+- 🖼️ Static image testing
+- 👥 Multi-user demo
+- 📊 Session management
+
+### 4. Run Traditional Focus Tracking
 
 ```bash
 uv run python main.py
@@ -106,25 +175,6 @@ uv run python main.py
 - Session data collection
 - Interactive feedback collection
 - Personalized recommendations (if API is running)
-
-### 3. Start Celery Worker (for async training)
-
-```bash
-uv run celery -A src.services.celery_app worker --loglevel=info
-```
-
-### 4. Test API Endpoints
-
-```bash
-uv run python tests/test_api.py
-```
-
-This will:
-- Create a test user
-- Generate sample sessions with feedback
-- Train a personalized model
-- Generate recommendations
-- Display comprehensive statistics
 
 ### 5. Test with Pytest
 
@@ -138,14 +188,15 @@ uv run pytest -m integration   # Integration tests only
 uv run pytest -m celery        # Celery tests only
 uv run pytest -m slow          # Slow tests only
 
+# Run focus API tests
+uv run pytest tests/test_focus_api.py -v
+
 # Run with coverage
 uv run pytest --cov=src --cov-report=html
 
 # Run specific test file
 uv run pytest tests/test_api_pytest.py
 ```
-
-### 6. Test Celery Async Training (Legacy)
 
 ```bash
 uv run python tests/test_celery.py
@@ -158,6 +209,15 @@ This will:
 - Check training history and status
 
 ## API Endpoints
+
+### Focus Tracking API (New!)
+- `POST /api/v1/focus/analyze` - Analyze frame for focus tracking
+- `POST /api/v1/focus/session/start` - Start focus tracking session
+- `POST /api/v1/focus/session/end` - End session and get results
+- `GET /api/v1/focus/session/{user_id}` - Get current session data
+- `GET /api/v1/focus/users/active` - List active users
+- `POST /api/v1/focus/cleanup` - Clean up inactive sessions
+- `GET /api/v1/focus/health` - Focus service health check
 
 ### Authentication
 - `POST /api/v1/users` - Create user with API key
@@ -180,9 +240,40 @@ This will:
 - `GET /api/v1/models` - List user models
 
 ### Analytics
-- `GET /api/v1/statistics` - User statistics
-- `GET /api/v1/recommendations` - Focus recommendations
+- `GET /api/v1/analytics/statistics` - User statistics
+- `GET /api/v1/analytics/recommendations` - Focus recommendations
 - `GET /api/v1/health` - API health check
+
+## Focus Tracking API Architecture
+
+### Client-Server Model
+```
+Client Application → API Server → Focus Service
+       ↓                    ↓              ↓
+   Capture Frame    →   Process Frame   →   Analyze Focus
+   Send to API      →   Extract Face    →   Update Session
+   Receive Results  →   Calculate Angle →   Return State
+```
+
+### Multi-User Support
+- **Session Isolation**: Each user_id maintains independent tracking
+- **Baseline Calibration**: Per-user angle adaptation
+- **Concurrent Processing**: Multiple users tracked simultaneously
+- **Memory Management**: Automatic cleanup after 30min inactivity
+
+### Frame Processing Pipeline
+1. **Frame Reception**: Base64 encoded image data
+2. **Face Detection**: MediaPipe face landmark extraction
+3. **Metric Calculation**: Angle, centroid, eye gap, confidence
+4. **State Classification**: Focused/Distracted/Away determination
+5. **Session Update**: Buffer management and statistics
+6. **Response Generation**: JSON response with current state
+
+### Real-Time Performance
+- **Processing Time**: ~50-100ms per frame
+- **Memory Usage**: ~1MB per active session
+- **Scalability**: Horizontal scaling with load balancers
+- **Optimization**: Frame skipping and compression options
 
 ## Machine Learning Pipeline
 
@@ -296,6 +387,13 @@ uv run python main.py
 ## License
 
 This project is licensed under the MIT License.
+
+## Documentation
+
+- **[Main README](README.md)** - Project overview and quick start
+- **[Focus Algorithm](FOCUS_ALGORITHM.md)** - Detailed algorithm flowcharts and technical specifications
+- **[Focus API Guide](FOCUS_API_README.md)** - Complete API documentation and integration examples
+- **[Demo Clients Guide](examples/README_DEMO_CLIENTS.md)** - Demo client usage and testing instructions
 
 ## Acknowledgments
 

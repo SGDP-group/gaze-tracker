@@ -2,7 +2,21 @@
 
 ## System Overview
 
-The Focus Management System uses a multi-layered approach to track user focus through real-time face detection, temporal analysis, and machine learning classification.
+The Focus Management System uses a multi-layered approach to track user focus through real-time face detection, temporal analysis, and machine learning classification. The system supports both **local processing** (webcam-based) and **API-based processing** (client-server model) for multi-user applications.
+
+### Architecture Options
+
+**1. Local Processing (Traditional)**
+- Webcam directly connected to main application
+- Real-time processing on client machine
+- Single-user focus tracking
+- Local ML model training
+
+**2. API-Based Processing (New!)**
+- Client sends frames to server via HTTP API
+- Server-side face detection and analysis
+- Multi-user session management
+- Centralized ML processing and storage
 
 ## Algorithm Flowchart
 
@@ -64,6 +78,39 @@ flowchart TD
     GG --> HH[Generate Recommendations]
     HH --> R
     EE --> R
+```
+
+### API-Based Processing Flowchart
+
+```mermaid
+flowchart TD
+    A[Client Application] --> B[Capture Frame]
+    B --> C[Encode to Base64]
+    C --> D[Send to API<br/>POST /focus/analyze]
+    
+    D --> E[API Server]
+    E --> F[Decode Frame]
+    F --> G[MediaPipe Face Detection]
+    G --> H{Face Detected?}
+    
+    H -->|No| I[State = AWAY]
+    H -->|Yes| J[Extract Face Metrics]
+    
+    J --> K[Calculate Face Angle]
+    K --> L[Update User Session]
+    L --> M[Update Baseline Angle<br/>WMA: alpha=0.05]
+    M --> N[Calculate Focus State]
+    
+    N --> O[Generate Response]
+    O --> P[Return JSON Response]
+    P --> Q[Client Updates UI]
+    
+    I --> L
+    Q --> R{Continue Session?}
+    R -->|Yes| B
+    R -->|No| S[End Session<br/>POST /focus/session/end]
+    S --> T[Final Session Data]
+    T --> U[Client Display Results]
 ```
 
 ## Detailed Component Breakdown
@@ -229,6 +276,50 @@ stateDiagram-v2
     
     Tracking --> SessionEnd: Duration complete
     SessionEnd --> [*]: Cleanup
+```
+
+### API Session Management
+
+```mermaid
+stateDiagram-v2
+    [*] --> SessionStart: POST /focus/session/start
+    SessionStart --> Active: Session Created
+    
+    Active --> FrameProcessing: POST /focus/analyze
+    FrameProcessing --> Active: Response Sent
+    
+    Active --> SessionEnd: POST /focus/session/end
+    SessionEnd --> [*]: Session Data Returned
+    
+    Active --> Cleanup: 30min Inactivity
+    Cleanup --> [*]: Session Removed
+```
+
+### Multi-User Session Isolation
+
+```mermaid
+flowchart TD
+    A[API Server] --> B[User Session Manager]
+    
+    B --> C[User A Session]
+    B --> D[User B Session]
+    B --> E[User C Session]
+    
+    C --> F[User A Baseline]
+    C --> G[User A Focus Buffer]
+    C --> H[User A Statistics]
+    
+    D --> I[User B Baseline]
+    D --> J[User B Focus Buffer]
+    D --> K[User B Statistics]
+    
+    E --> L[User C Baseline]
+    E --> M[User C Focus Buffer]
+    E --> N[User C Statistics]
+    
+    F --> O[Independent Processing]
+    I --> O
+    L --> O
 ```
 
 ### Error Handling
