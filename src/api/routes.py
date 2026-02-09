@@ -11,15 +11,18 @@ from src.database.database import get_db
 from src.database.models import User, UserSession, UserFeedback, UserModel
 from src.models.schemas import (
     UserCreate, UserResponse, SessionCreate, SessionResponse,
-    FeedbackCreate, FeedbackResponse, ModelInfo, TrainingRequest,
-    TrainingResponse, RecommendationResponse, SessionStatistics,
-    HealthResponse, TrainingTaskCreate, TrainingTaskResponse,
-    TrainingStatusResponse, TrainingHistoryResponse, AsyncTrainingResponse
+    FeedbackCreate, FeedbackResponse, ModelInfo, RecommendationResponse,
+    TrainingTaskRequest, TrainingTaskResponse, TrainingStatusResponse
+)
+from src.models.focus_schemas import (
+    FrameRequest, FocusResponse, SessionStartRequest, SessionResponse as FocusSessionResponse,
+    SessionData, ActiveUsersResponse, ErrorResponse, HealthResponse
 )
 from src.api.dependencies import get_current_user
 from src.services.auth import create_user, get_user_by_id
 from src.services.ml_service import PersonalizedMLService
 from src.services.tasks import train_user_model_async, get_task_status, get_user_training_history
+from src.services.focus_service import focus_tracker
 
 # Initialize services
 ml_service = PersonalizedMLService()
@@ -399,3 +402,261 @@ def health_check(db: Session = Depends(get_db)):
         total_sessions=total_sessions,
         timestamp=datetime.utcnow()
     )
+
+
+# ==================== Focus Tracking Endpoints ====================
+
+@router.post("/focus/analyze", response_model=FocusResponse)
+def analyze_focus_frame(frame_request: FrameRequest):
+    """
+    Analyze a frame for focus tracking.
+    
+    Args:
+        frame_request: Frame data and user information
+        
+    Returns:
+        Focus analysis results
+    """
+    try:
+        import base64
+        import io
+        
+        # Decode base64 frame data
+        frame_data = base64.b64decode(frame_request.frame_data.split(',')[1])
+        image_shape = (frame_request.image_height, frame_request.image_width)
+        
+        # Extract face metrics
+        face_metrics = focus_tracker.extract_face_metrics(frame_data, image_shape)
+        
+        # Update user session
+        focus_result = focus_tracker.update_user_session(frame_request.user_id, face_metrics)
+        
+        # Convert face metrics to response format if available
+        face_metrics_response = None
+        if face_metrics:
+            face_metrics_response = {
+                "centroid": {"x": face_metrics["centroid"][0], "y": face_metrics["centroid"][1]},
+                "angle": face_metrics["angle"],
+                "magnitude": face_metrics["magnitude"],
+                "eye_gap": face_metrics["eye_gap"],
+                "confidence": face_metrics["confidence"],
+                "timestamp": face_metrics["timestamp"]
+            }
+        
+        return FocusResponse(
+            user_id=focus_result["user_id"],
+            current_state=focus_result["current_state"],
+            focus_score=focus_result["focus_score"],
+            baseline_angle=focus_result["baseline_angle"],
+            face_metrics=face_metrics_response,
+            session_stats=focus_result["session_stats"],
+            timestamp=datetime.fromisoformat(focus_result["timestamp"])
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Frame analysis failed: {str(e)}"
+        )
+
+
+@router.post("/focus/session/start", response_model=FocusSessionResponse)
+def start_focus_session(session_request: SessionStartRequest):
+    """
+    Start a new focus tracking session for a user.
+    
+    Args:
+        session_request: Session start request
+        
+    Returns:
+        Session start response
+    """
+    try:
+        import uuid
+        
+        # Initialize user session if not already active
+        if session_request.user_id not in focus_tracker.user_sessions:
+            focus_tracker.user_sessions[session_request.user_id] = {
+                "baseline_angle": 0.0,
+                "focus_buffer": [],
+                "session_start": datetime.utcnow().isoformat(),
+                "total_frames": 0,
+                "focused_frames": 0,
+                "distracted_frames": 0,
+                "away_frames": 0,
+                "current_state": "AWAY",
+                "distraction_timer": 0.0,
+                "last_update": datetime.utcnow().isoformat()
+            }
+        
+        session_id = f"session_{uuid.uuid4().hex[:8]}"
+        
+        return FocusSessionResponse(
+            user_id=session_request.user_id,
+            session_id=session_id,
+            session_start=datetime.utcnow(),
+            status="active",
+            message=f"Focus tracking session started for user {session_request.user_id}"
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to start session: {str(e)}"
+        )
+
+
+@router.post("/focus/session/end", response_model=SessionData)
+def end_focus_session(user_id: str):
+    """
+    End a focus tracking session and return final data.
+    
+    Args:
+        user_id: User identifier
+        
+    Returns:
+        Complete session data
+    """
+    try:
+        session_data = focus_tracker.end_user_session(user_id)
+        
+        if not session_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No active session found for user {user_id}"
+            )
+        
+        return SessionData(
+            user_id=session_data["user_id"],
+            session_start=datetime.fromisoformat(session_data["session_start"]),
+            session_end=datetime.fromisoformat(session_data["session_end"]),
+            total_frames=session_data["total_frames"],
+            focused_frames=session_data["focused_frames"],
+            distracted_frames=session_data["distracted_frames"],
+            away_frames=session_data["away_frames"],
+            focus_score=session_data["focus_score"],
+            baseline_angle=session_data["baseline_angle"]
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to end session: {str(e)}"
+        )
+
+
+@router.get("/focus/session/{user_id}", response_model=SessionData)
+def get_session_data(user_id: str):
+    """
+    Get current session data for a user.
+    
+    Args:
+        user_id: User identifier
+        
+    Returns:
+        Current session data
+    """
+    try:
+        session_data = focus_tracker.get_user_session_data(user_id)
+        
+        if not session_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No session found for user {user_id}"
+            )
+        
+        return SessionData(
+            user_id=session_data["user_id"],
+            session_start=datetime.fromisoformat(session_data["session_start"]),
+            session_end=datetime.fromisoformat(session_data["session_end"]),
+            total_frames=session_data["total_frames"],
+            focused_frames=session_data["focused_frames"],
+            distracted_frames=session_data["distracted_frames"],
+            away_frames=session_data["away_frames"],
+            focus_score=session_data["focus_score"],
+            baseline_angle=session_data["baseline_angle"]
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get session data: {str(e)}"
+        )
+
+
+@router.get("/focus/users/active", response_model=ActiveUsersResponse)
+def get_active_users():
+    """
+    Get list of currently active users.
+    
+    Returns:
+        List of active user IDs
+    """
+    try:
+        active_users = focus_tracker.get_active_users()
+        
+        return ActiveUsersResponse(
+            active_users=active_users,
+            total_count=len(active_users),
+            timestamp=datetime.utcnow()
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get active users: {str(e)}"
+        )
+
+
+@router.post("/focus/cleanup")
+def cleanup_inactive_sessions():
+    """
+    Clean up inactive sessions (timeout: 30 minutes).
+    
+    Returns:
+        Cleanup status
+    """
+    try:
+        focus_tracker.cleanup_inactive_sessions(timeout_minutes=30)
+        
+        return {
+            "status": "success",
+            "message": "Inactive sessions cleaned up",
+            "active_users": len(focus_tracker.get_active_users()),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to cleanup sessions: {str(e)}"
+        )
+
+
+@router.get("/focus/health", response_model=HealthResponse)
+def focus_health_check():
+    """
+    Health check for focus tracking service.
+    
+    Returns:
+        Service health status
+    """
+    try:
+        active_sessions = len(focus_tracker.get_active_users())
+        
+        return HealthResponse(
+            status="healthy",
+            active_sessions=active_sessions,
+            service_version="1.0.0",
+            timestamp=datetime.utcnow()
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Focus service unavailable: {str(e)}"
+        )

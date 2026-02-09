@@ -98,7 +98,7 @@ stateDiagram-v2
 ### 3. Baseline Angle Calibration
 
 ```mermaid
-flowchart TD
+flowchart LR
     A[Current Angle] --> B[Weighted Moving Average]
     B --> C[New Baseline = alpha*Current + (1-alpha)*Old]
     C --> D[alpha = 0.05 (Slow Adaptation)]
