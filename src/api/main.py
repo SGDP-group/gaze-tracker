@@ -5,10 +5,23 @@ FastAPI main application for the Focus Management System.
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from contextlib import asynccontextmanager
 import uvicorn
 
 from src.database.database import create_tables
 from src.api.routes import router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize database on startup."""
+    try:
+        create_tables()
+        print("Database initialized successfully")
+    except Exception as e:
+        print(f"Failed to initialize database: {e}")
+    yield
+    # Cleanup code here if needed
 
 # Create FastAPI app
 app = FastAPI(
@@ -16,7 +29,8 @@ app = FastAPI(
     description="API for personalized focus tracking and productivity analysis",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan
 )
 
 # Add CORS middleware
@@ -30,16 +44,6 @@ app.add_middleware(
 
 # Include routes
 app.include_router(router, prefix="/api/v1", tags=["focus-management"])
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize database on startup."""
-    try:
-        create_tables()
-        print("Database initialized successfully")
-    except Exception as e:
-        print(f"Failed to initialize database: {e}")
 
 
 @app.exception_handler(Exception)

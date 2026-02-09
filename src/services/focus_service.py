@@ -29,7 +29,7 @@ class FocusTracker:
         """Initialize MediaPipe face detector."""
         try:
             base_options = python.BaseOptions(
-                model_asset_path='detector.tflite'
+                model_asset_path='model/detector.tflite'
             )
             options = vision.FaceDetectorOptions(
                 base_options=base_options,

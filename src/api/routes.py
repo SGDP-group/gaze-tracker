@@ -12,7 +12,8 @@ from src.database.models import User, UserSession, UserFeedback, UserModel
 from src.models.schemas import (
     UserCreate, UserResponse, SessionCreate, SessionResponse,
     FeedbackCreate, FeedbackResponse, ModelInfo, RecommendationResponse,
-    TrainingTaskRequest, TrainingTaskResponse, TrainingStatusResponse
+    TrainingRequest, TrainingResponse, TrainingTaskCreate, TrainingTaskResponse, 
+    TrainingStatusResponse, AsyncTrainingResponse, SessionStatistics, TrainingHistoryResponse
 )
 from src.models.focus_schemas import (
     FrameRequest, FocusResponse, SessionStartRequest, SessionResponse as FocusSessionResponse,

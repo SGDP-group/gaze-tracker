@@ -25,4 +25,10 @@ dependencies = [
     "pytest-cov>=4.1.0",
     "pytest-mock>=3.12.0",
     "httpx>=0.25.0",
+    "pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+gui = [
+    "pillow>=10.0.0"
 ]
