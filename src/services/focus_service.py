@@ -151,6 +151,7 @@ class FocusTracker:
         # Initialize user session if not exists
         if user_id not in self.user_sessions:
             self.user_sessions[user_id] = {
+                "user_id": user_id,
                 "baseline_angle": 0.0,
                 "focus_buffer": [],
                 "session_start": datetime.utcnow().isoformat(),
@@ -159,7 +160,7 @@ class FocusTracker:
                 "distracted_frames": 0,
                 "away_frames": 0,
                 "current_state": "AWAY",
-                "distraction_timer": 0.0,
+                "distraction_start": None,
                 "last_update": datetime.utcnow().isoformat()
             }
         
@@ -171,7 +172,7 @@ class FocusTracker:
         if face_metrics is None:
             session["current_state"] = "AWAY"
             session["away_frames"] += 1
-            session["distraction_timer"] = 0.0
+            session["distraction_start"] = None
         else:
             current_angle = face_metrics["angle"]
             
@@ -185,19 +186,30 @@ class FocusTracker:
             angle_diff = abs(current_angle - session["baseline_angle"])
             
             # Determine focus state
+            now = datetime.utcnow()
             if angle_diff < 20:
                 session["current_state"] = "FOCUSED"
                 session["focused_frames"] += 1
-                session["distraction_timer"] = 0.0
+                session["distraction_start"] = None
             elif angle_diff > 30:
-                session["distraction_timer"] += 1/30  # Assuming ~30fps
-                if session["distraction_timer"] >= 2.0:
+                if session["distraction_start"] is None:
+                    session["distraction_start"] = now
+                
+                elapsed = (now - session["distraction_start"]).total_seconds()
+                if elapsed >= 2.0:
                     session["current_state"] = "DISTRACTED"
                     session["distracted_frames"] += 1
+                else:
+                    # Grace period: not yet confirmed as distracted
+                    if session["current_state"] != "DISTRACTED":
+                        session["current_state"] = "FOCUSED"
+                        session["focused_frames"] += 1
+                    else:
+                        session["distracted_frames"] += 1
             else:
                 session["current_state"] = "FOCUSED"
                 session["focused_frames"] += 1
-                session["distraction_timer"] = 0.0
+                session["distraction_start"] = None
         
         # Update focus buffer (keep last 50 states)
         session["focus_buffer"].append(session["current_state"])

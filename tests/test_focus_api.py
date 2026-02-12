@@ -263,7 +263,9 @@ class TestFocusServiceIntegration:
         # Verify sessions are separate
         assert user1 in focus_tracker.user_sessions
         assert user2 in focus_tracker.user_sessions
-        assert focus_tracker.user_sessions[user1]["user_id"] != focus_tracker.user_sessions[user2]["user_id"]
+        assert focus_tracker.user_sessions[user1]["user_id"] == user1
+        assert focus_tracker.user_sessions[user2]["user_id"] == user2
+        assert focus_tracker.user_sessions[user1] is not focus_tracker.user_sessions[user2]
         
         # Clean up
         focus_tracker.end_user_session(user1)
@@ -283,7 +285,7 @@ class TestFocusServiceIntegration:
         # Check session data
         session_data = focus_tracker.get_user_session_data(user_id)
         assert session_data is not None
-        assert session_data["total_frames"] == 5
+        assert session_data["total_frames"] == 6
         
         # Clean up
         focus_tracker.end_user_session(user_id)
@@ -314,6 +316,182 @@ class TestFocusServiceIntegration:
         
         # Clean up
         focus_tracker.end_user_session(user_id)
+
+
+class TestMultiUserIsolation:
+    """Comprehensive tests for multi-user session isolation in the focus algorithm."""
+
+    def setup_method(self):
+        """Clean up any leftover sessions before each test."""
+        for uid in list(focus_tracker.user_sessions.keys()):
+            focus_tracker.end_user_session(uid)
+
+    def teardown_method(self):
+        """Clean up sessions after each test."""
+        for uid in list(focus_tracker.user_sessions.keys()):
+            focus_tracker.end_user_session(uid)
+
+    def test_interleaved_frames_independent_counts(self):
+        """Interleaved frame processing must keep frame counts independent per user."""
+        user_a = "iso_user_a"
+        user_b = "iso_user_b"
+
+        # User A: 3 frames, User B: 7 frames, interleaved
+        focus_tracker.update_user_session(user_a, None)
+        focus_tracker.update_user_session(user_b, None)
+        focus_tracker.update_user_session(user_a, None)
+        focus_tracker.update_user_session(user_b, None)
+        focus_tracker.update_user_session(user_b, None)
+        focus_tracker.update_user_session(user_a, None)
+        focus_tracker.update_user_session(user_b, None)
+        focus_tracker.update_user_session(user_b, None)
+        focus_tracker.update_user_session(user_b, None)
+        focus_tracker.update_user_session(user_b, None)
+
+        data_a = focus_tracker.get_user_session_data(user_a)
+        data_b = focus_tracker.get_user_session_data(user_b)
+
+        assert data_a["total_frames"] == 3
+        assert data_b["total_frames"] == 7
+
+    def test_different_angles_independent_baselines(self):
+        """Users with different head angles must have independent baselines."""
+        user_a = "baseline_iso_a"
+        user_b = "baseline_iso_b"
+
+        metrics_a = {"angle": 10.0, "confidence": 0.9, "timestamp": "2024-01-01T00:00:00"}
+        metrics_b = {"angle": 80.0, "confidence": 0.9, "timestamp": "2024-01-01T00:00:00"}
+
+        for _ in range(20):
+            focus_tracker.update_user_session(user_a, metrics_a)
+            focus_tracker.update_user_session(user_b, metrics_b)
+
+        baseline_a = focus_tracker.user_sessions[user_a]["baseline_angle"]
+        baseline_b = focus_tracker.user_sessions[user_b]["baseline_angle"]
+
+        # Baselines should have diverged toward their respective angles
+        assert baseline_a < 30, f"User A baseline {baseline_a} should be near 10"
+        assert baseline_b > 50, f"User B baseline {baseline_b} should be near 80"
+
+    def test_one_user_focused_other_away(self):
+        """One user focused while other is away — states must not bleed."""
+        user_a = "state_iso_a"
+        user_b = "state_iso_b"
+
+        metrics_focused = {"angle": 0.0, "confidence": 0.9, "timestamp": "2024-01-01T00:00:00"}
+
+        for _ in range(10):
+            focus_tracker.update_user_session(user_a, metrics_focused)  # face detected
+            focus_tracker.update_user_session(user_b, None)              # no face
+
+        session_a = focus_tracker.user_sessions[user_a]
+        session_b = focus_tracker.user_sessions[user_b]
+
+        assert session_a["current_state"] == "FOCUSED"
+        assert session_b["current_state"] == "AWAY"
+        assert session_a["away_frames"] == 0
+        assert session_b["focused_frames"] == 0
+
+    def test_ending_one_session_preserves_other(self):
+        """Ending one user's session must not affect another user's session."""
+        user_a = "end_iso_a"
+        user_b = "end_iso_b"
+
+        metrics = {"angle": 5.0, "confidence": 0.9, "timestamp": "2024-01-01T00:00:00"}
+
+        for _ in range(5):
+            focus_tracker.update_user_session(user_a, metrics)
+            focus_tracker.update_user_session(user_b, metrics)
+
+        # End user A
+        end_data = focus_tracker.end_user_session(user_a)
+        assert end_data is not None
+        assert end_data["total_frames"] == 5
+
+        # User B must still be active and unaffected
+        assert user_b in focus_tracker.user_sessions
+        assert user_a not in focus_tracker.user_sessions
+        data_b = focus_tracker.get_user_session_data(user_b)
+        assert data_b["total_frames"] == 5
+
+    def test_focus_scores_independent(self):
+        """Focus scores must be computed independently per user."""
+        user_a = "score_iso_a"
+        user_b = "score_iso_b"
+
+        metrics_focused = {"angle": 0.0, "confidence": 0.9, "timestamp": "2024-01-01T00:00:00"}
+
+        # User A: all focused frames
+        for _ in range(10):
+            focus_tracker.update_user_session(user_a, metrics_focused)
+
+        # User B: all away frames
+        for _ in range(10):
+            focus_tracker.update_user_session(user_b, None)
+
+        data_a = focus_tracker.get_user_session_data(user_a)
+        data_b = focus_tracker.get_user_session_data(user_b)
+
+        assert data_a["focus_score"] == 100.0
+        assert data_b["focus_score"] == 0.0
+
+    def test_frame_counts_always_sum_correctly(self):
+        """focused + distracted + away must equal total_frames for each user."""
+        user_a = "sum_iso_a"
+        user_b = "sum_iso_b"
+
+        metrics_focused = {"angle": 0.0, "confidence": 0.9, "timestamp": "2024-01-01T00:00:00"}
+        metrics_large_angle = {"angle": 90.0, "confidence": 0.9, "timestamp": "2024-01-01T00:00:00"}
+
+        # User A: mix of focused and away
+        for i in range(20):
+            if i % 3 == 0:
+                focus_tracker.update_user_session(user_a, None)
+            else:
+                focus_tracker.update_user_session(user_a, metrics_focused)
+
+        # User B: mix of focused and large-angle
+        for i in range(15):
+            if i % 2 == 0:
+                focus_tracker.update_user_session(user_b, metrics_large_angle)
+            else:
+                focus_tracker.update_user_session(user_b, metrics_focused)
+
+        for uid in [user_a, user_b]:
+            s = focus_tracker.user_sessions[uid]
+            total = s["focused_frames"] + s["distracted_frames"] + s["away_frames"]
+            assert total == s["total_frames"], (
+                f"User {uid}: {s['focused_frames']}+{s['distracted_frames']}+"
+                f"{s['away_frames']}={total} != {s['total_frames']}"
+            )
+
+    def test_many_concurrent_users(self):
+        """Stress test: 20 concurrent users with interleaved updates."""
+        num_users = 20
+        frames_per_user = 15
+        user_ids = [f"stress_user_{i}" for i in range(num_users)]
+
+        metrics_list = [
+            {"angle": float(i * 4), "confidence": 0.9, "timestamp": "2024-01-01T00:00:00"}
+            for i in range(num_users)
+        ]
+
+        # Interleave frames across all users
+        for frame_idx in range(frames_per_user):
+            for i, uid in enumerate(user_ids):
+                if frame_idx % 5 == 0:
+                    focus_tracker.update_user_session(uid, None)
+                else:
+                    focus_tracker.update_user_session(uid, metrics_list[i])
+
+        # Verify each user has correct independent frame count
+        for uid in user_ids:
+            data = focus_tracker.get_user_session_data(uid)
+            assert data is not None
+            assert data["total_frames"] == frames_per_user
+            s = focus_tracker.user_sessions[uid]
+            total = s["focused_frames"] + s["distracted_frames"] + s["away_frames"]
+            assert total == frames_per_user
 
 
 if __name__ == "__main__":

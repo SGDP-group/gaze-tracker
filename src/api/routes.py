@@ -478,6 +478,7 @@ def start_focus_session(session_request: SessionStartRequest):
         # Initialize user session if not already active
         if session_request.user_id not in focus_tracker.user_sessions:
             focus_tracker.user_sessions[session_request.user_id] = {
+                "user_id": session_request.user_id,
                 "baseline_angle": 0.0,
                 "focus_buffer": [],
                 "session_start": datetime.utcnow().isoformat(),
@@ -486,7 +487,7 @@ def start_focus_session(session_request: SessionStartRequest):
                 "distracted_frames": 0,
                 "away_frames": 0,
                 "current_state": "AWAY",
-                "distraction_timer": 0.0,
+                "distraction_start": None,
                 "last_update": datetime.utcnow().isoformat()
             }
         
