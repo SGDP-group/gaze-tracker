@@ -121,7 +121,7 @@ python focus_client_example.py
 ### 1. Start the API Server
 ```bash
 # In the main project directory
-uv run python -m src.api.main
+uv run server.py
 ```
 
 ### 2. Test with Demo Client
@@ -205,7 +205,7 @@ uv run python -m src.api.main
 ### Common Issues
 
 **API Connection Failed:**
-- Verify API server is running: `uv run python -m src.api.main`
+- Verify API server is running: `uv run server.py `
 - Check API URL in client configuration
 - Ensure no firewall blocking port 8000
 
@@ -232,7 +232,7 @@ uv run python -m src.api.main
 export LOG_LEVEL=DEBUG
 
 # Start API server
-uv run python -m src.api.main
+uv run server.py
 ```
 
 **Browser Console:**

@@ -329,7 +329,7 @@ if __name__ == "__main__":
     # Check API health
     if not api_health_check():
         print("\n❌ Please start the API server first:")
-        print("   uv run python -m src.api.main")
+        print("   uv run server.py")
         exit(1)
     
     print("\n📋 Choose demo:")

@@ -130,7 +130,7 @@ class FocusTracker:
                 "magnitude": magnitude,
                 "eye_gap": eye_gap,
                 "confidence": detection.categories[0].score,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(datetime.timezone.utc).isoformat()
             }
             
         except Exception as e:
@@ -154,19 +154,19 @@ class FocusTracker:
                 "user_id": user_id,
                 "baseline_angle": 0.0,
                 "focus_buffer": [],
-                "session_start": datetime.utcnow().isoformat(),
+                "session_start": datetime.now(datetime.timezone.utc).isoformat(),
                 "total_frames": 0,
                 "focused_frames": 0,
                 "distracted_frames": 0,
                 "away_frames": 0,
                 "current_state": "AWAY",
                 "distraction_start": None,
-                "last_update": datetime.utcnow().isoformat()
+                "last_update": datetime.now(datetime.timezone.utc).isoformat()
             }
         
         session = self.user_sessions[user_id]
         session["total_frames"] += 1
-        session["last_update"] = datetime.utcnow().isoformat()
+        session["last_update"] = datetime.now(datetime.timezone.utc).isoformat()
         
         # Process face metrics
         if face_metrics is None:
@@ -186,7 +186,7 @@ class FocusTracker:
             angle_diff = abs(current_angle - session["baseline_angle"])
             
             # Determine focus state
-            now = datetime.utcnow()
+            now = datetime.now(datetime.timezone.utc)
             if angle_diff < 20:
                 session["current_state"] = "FOCUSED"
                 session["focused_frames"] += 1
@@ -281,7 +281,7 @@ class FocusTracker:
     
     def cleanup_inactive_sessions(self, timeout_minutes: int = 30):
         """Clean up inactive sessions."""
-        current_time = datetime.utcnow()
+        current_time = datetime.now(datetime.timezone.utc)
         inactive_users = []
         
         for user_id, session in self.user_sessions.items():

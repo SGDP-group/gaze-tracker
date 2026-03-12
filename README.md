@@ -117,7 +117,7 @@ ls detector.tflite  # Should exist in project root
 For focus tracking API and personalized features:
 
 ```bash
-uv run python -m src.api.main
+uv run server.py
 ```
 
 The API will be available at `http://localhost:8000`
