@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 import numpy as np
 
-from src.api.main import app
+from server import app
 from src.services.focus_service import focus_tracker
 
 class TestFocusTrackingAPI:
