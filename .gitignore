@@ -13,3 +13,4 @@ htmlcov
 .coverage
 .coverage.*
 focus_heatmap.png
+data/focus_tracker.db
