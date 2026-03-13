@@ -319,7 +319,7 @@
                 <h2>⚙️ API Configuration</h2>
                 <div class="form-group">
                     <label for="apiUrl">API URL:</label>
-                    <input type="text" id="apiUrl" value="http://localhost:8000" placeholder="http://localhost:8000">
+                    <input type="text" id="apiUrl" value="http://localhost:8002" placeholder="http://localhost:8002">
                 </div>
                 <div class="form-group">
                     <label for="userId">User ID:</label>
@@ -456,6 +456,7 @@
                     method: method,
                     headers: {
                         'Content-Type': 'application/json',
+                        'Accept': 'application/json'
                     }
                 };
 
@@ -468,6 +469,14 @@
                 }
 
                 const response = await fetch(url.toString(), options);
+                
+                // Check if response is JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    return { success: false, error: 'Non-JSON response', status: response.status, data: text };
+                }
+                
                 const responseData = await response.json();
                 
                 return { success: response.ok, status: response.status, data: responseData };
@@ -610,11 +619,19 @@
         async function healthCheck() {
             // Check main health
             const mainResult = await makeApiRequest('GET', '/health');
-            logResponse('Main Health', mainResult.success ? mainResult.data : mainResult);
+            if (mainResult.success) {
+                logResponse('Main Health', mainResult.data);
+            } else {
+                logResponse('Main Health Error', mainResult);
+            }
 
             // Check focus health
             const focusResult = await makeApiRequest('GET', '/focus/health');
-            logResponse('Focus Health', focusResult.success ? focusResult.data : focusResult);
+            if (focusResult.success) {
+                logResponse('Focus Health', focusResult.data);
+            } else {
+                logResponse('Focus Health Error', focusResult);
+            }
 
             updateStatus('Health check completed');
         }

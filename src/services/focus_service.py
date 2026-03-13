@@ -13,8 +13,16 @@ from typing import Dict, Optional, List, Tuple
 from datetime import datetime
 import json
 import logging
+from enum import Enum
 
 logger = logging.getLogger(__name__)
+
+class ProductivityLevel(str, Enum):
+    """Productivity classification levels."""
+    HIGHLY_PRODUCTIVE = "HIGHLY_PRODUCTIVE"
+    PRODUCTIVE = "PRODUCTIVE"
+    MODERATELY_PRODUCTIVE = "MODERATELY_PRODUCTIVE"
+    NOT_PRODUCTIVE = "NOT_PRODUCTIVE"
 
 class FocusTracker:
     """Focus tracking service for API-based frame processing."""
@@ -56,6 +64,46 @@ class FocusTracker:
         y_px = min(math.floor(normalized_y * image_height), image_height - 1)
         
         return x_px, y_px
+    
+    def _calculate_fps(self, session: Dict) -> float:
+        """Calculate rolling average FPS from frame timestamps."""
+        timestamps = session["frame_timestamps"]
+        if len(timestamps) < 2:
+            return 30.0  # Default FPS
+        
+        # Keep only timestamps from last 10 seconds
+        current_time = timestamps[-1]
+        ten_seconds_ago = current_time.timestamp() - 10.0
+        
+        recent_timestamps = [ts for ts in timestamps if ts.timestamp() >= ten_seconds_ago]
+        
+        if len(recent_timestamps) < 2:
+            return 30.0
+        
+        # Calculate FPS from the time span
+        time_span = (recent_timestamps[-1] - recent_timestamps[0]).total_seconds()
+        if time_span > 0:
+            fps = (len(recent_timestamps) - 1) / time_span
+        else:
+            fps = 30.0
+        
+        # Update FPS buffer and return rolling average
+        session["fps_buffer"].append(fps)
+        if len(session["fps_buffer"]) > 10:  # Keep last 10 FPS calculations
+            session["fps_buffer"].pop(0)
+        
+        return sum(session["fps_buffer"]) / len(session["fps_buffer"])
+    
+    def _classify_productivity(self, focus_score: float) -> ProductivityLevel:
+        """Classify session productivity based on focus score."""
+        if focus_score >= 85:
+            return ProductivityLevel.HIGHLY_PRODUCTIVE
+        elif focus_score >= 70:
+            return ProductivityLevel.PRODUCTIVE
+        elif focus_score >= 50:
+            return ProductivityLevel.MODERATELY_PRODUCTIVE
+        else:
+            return ProductivityLevel.NOT_PRODUCTIVE
     
     def extract_face_metrics(self, frame_data: bytes, image_shape: Tuple[int, int]) -> Optional[Dict]:
         """
@@ -130,7 +178,7 @@ class FocusTracker:
                 "magnitude": magnitude,
                 "eye_gap": eye_gap,
                 "confidence": detection.categories[0].score,
-                "timestamp": datetime.now(datetime.timezone.utc).isoformat()
+                "timestamp": datetime.now().isoformat()
             }
             
         except Exception as e:
@@ -154,19 +202,25 @@ class FocusTracker:
                 "user_id": user_id,
                 "baseline_angle": 0.0,
                 "focus_buffer": [],
-                "session_start": datetime.now(datetime.timezone.utc).isoformat(),
+                "session_start": datetime.now().isoformat(),
                 "total_frames": 0,
                 "focused_frames": 0,
                 "distracted_frames": 0,
                 "away_frames": 0,
                 "current_state": "AWAY",
                 "distraction_start": None,
-                "last_update": datetime.now(datetime.timezone.utc).isoformat()
+                "last_update": datetime.now().isoformat(),
+                "frame_timestamps": [],  # Track frame timestamps for FPS calculation
+                "fps_buffer": []  # Rolling FPS buffer
             }
         
         session = self.user_sessions[user_id]
         session["total_frames"] += 1
-        session["last_update"] = datetime.now(datetime.timezone.utc).isoformat()
+        current_time = datetime.now()
+        session["last_update"] = current_time.isoformat()
+        
+        # Track frame timestamp for FPS calculation
+        session["frame_timestamps"].append(current_time)
         
         # Process face metrics
         if face_metrics is None:
@@ -186,7 +240,7 @@ class FocusTracker:
             angle_diff = abs(current_angle - session["baseline_angle"])
             
             # Determine focus state
-            now = datetime.now(datetime.timezone.utc)
+            now = datetime.now()
             if angle_diff < 20:
                 session["current_state"] = "FOCUSED"
                 session["focused_frames"] += 1
@@ -201,12 +255,11 @@ class FocusTracker:
                     session["distracted_frames"] += 1
                 else:
                     # Grace period: not yet confirmed as distracted
-                    if session["current_state"] != "DISTRACTED":
-                        session["current_state"] = "FOCUSED"
-                        session["focused_frames"] += 1
-                    else:
-                        session["distracted_frames"] += 1
+                    session["current_state"] = "FOCUSED"
+                    session["focused_frames"] += 1
+                    session["distraction_start"] = None
             else:
+                # Angle between 20-30 degrees, consider as FOCUSED
                 session["current_state"] = "FOCUSED"
                 session["focused_frames"] += 1
                 session["distraction_start"] = None
@@ -223,17 +276,21 @@ class FocusTracker:
         else:
             focus_score = 0.0
         
+        # Calculate FPS (rolling average of last 10 seconds)
+        avg_fps = self._calculate_fps(session)
+        
         return {
             "user_id": user_id,
             "current_state": session["current_state"],
             "focus_score": focus_score,
             "baseline_angle": session["baseline_angle"],
+            "average_fps": avg_fps,
             "session_stats": {
                 "total_frames": session["total_frames"],
                 "focused_frames": session["focused_frames"],
                 "distracted_frames": session["distracted_frames"],
                 "away_frames": session["away_frames"],
-                "session_duration": session["total_frames"] / 30  # Assuming 30fps
+                "session_duration": session["total_frames"] / max(avg_fps, 1)  # Use actual FPS
             },
             "timestamp": session["last_update"]
         }
@@ -252,6 +309,15 @@ class FocusTracker:
         else:
             focus_score = 0.0
         
+        # Calculate average FPS for the session
+        try:
+            avg_fps = self._calculate_fps(session)
+        except:
+            avg_fps = 30.0  # Default FPS if calculation fails
+        
+        # Classify productivity
+        productivity_level = self._classify_productivity(focus_score)
+        
         return {
             "user_id": user_id,
             "session_start": session["session_start"],
@@ -261,7 +327,10 @@ class FocusTracker:
             "distracted_frames": session["distracted_frames"],
             "away_frames": session["away_frames"],
             "focus_score": focus_score,
-            "baseline_angle": session["baseline_angle"]
+            "baseline_angle": session["baseline_angle"],
+            "average_fps": avg_fps,
+            "productivity_level": productivity_level.value,
+            "session_duration_seconds": session["total_frames"] / max(avg_fps, 1)
         }
     
     def end_user_session(self, user_id: str) -> Optional[Dict]:
@@ -281,7 +350,7 @@ class FocusTracker:
     
     def cleanup_inactive_sessions(self, timeout_minutes: int = 30):
         """Clean up inactive sessions."""
-        current_time = datetime.now(datetime.timezone.utc)
+        current_time = datetime.now()
         inactive_users = []
         
         for user_id, session in self.user_sessions.items():

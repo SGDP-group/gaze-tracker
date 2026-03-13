@@ -13,7 +13,8 @@ from src.models.schemas import (
     UserCreate, UserResponse, SessionCreate, SessionResponse,
     FeedbackCreate, FeedbackResponse, ModelInfo, RecommendationResponse,
     TrainingRequest, TrainingResponse, TrainingTaskCreate, TrainingTaskResponse, 
-    TrainingStatusResponse, AsyncTrainingResponse, SessionStatistics, TrainingHistoryResponse
+    TrainingStatusResponse, AsyncTrainingResponse, SessionStatistics, TrainingHistoryResponse,
+    HealthResponse as MainHealthResponse
 )
 from src.models.focus_schemas import (
     FrameRequest, FocusResponse, SessionStartRequest, SessionResponse as FocusSessionResponse,
@@ -382,7 +383,7 @@ def get_user_training_tasks(
         )
 
 
-@router.get("/health", response_model=HealthResponse)
+@router.get("/health", response_model=MainHealthResponse)
 def health_check(db: Session = Depends(get_db)):
     """API health check."""
     try:
@@ -396,12 +397,12 @@ def health_check(db: Session = Depends(get_db)):
     total_users = db.query(User).count() if db_connected else 0
     total_sessions = db.query(UserSession).count() if db_connected else 0
     
-    return HealthResponse(
+    return MainHealthResponse(
         status="healthy" if db_connected else "unhealthy",
         database_connected=db_connected,
         total_users=total_users,
         total_sessions=total_sessions,
-        timestamp=datetime.now(datetime.timezone.utc)
+        timestamp=datetime.now()
     )
 
 
@@ -481,14 +482,14 @@ def start_focus_session(session_request: SessionStartRequest):
                 "user_id": session_request.user_id,
                 "baseline_angle": 0.0,
                 "focus_buffer": [],
-                "session_start": datetime.now(datetime.timezone.utc).isoformat(),
+                "session_start": datetime.now().isoformat(),
                 "total_frames": 0,
                 "focused_frames": 0,
                 "distracted_frames": 0,
                 "away_frames": 0,
                 "current_state": "AWAY",
                 "distraction_start": None,
-                "last_update": datetime.now(datetime.timezone.utc).isoformat()
+                "last_update": datetime.now().isoformat()
             }
         
         session_id = f"session_{uuid.uuid4().hex[:8]}"
@@ -496,7 +497,7 @@ def start_focus_session(session_request: SessionStartRequest):
         return FocusSessionResponse(
             user_id=session_request.user_id,
             session_id=session_id,
-            session_start=datetime.now(datetime.timezone.utc),
+            session_start=datetime.now(),
             status="active",
             message=f"Focus tracking session started for user {session_request.user_id}"
         )
@@ -537,7 +538,10 @@ def end_focus_session(user_id: str):
             distracted_frames=session_data["distracted_frames"],
             away_frames=session_data["away_frames"],
             focus_score=session_data["focus_score"],
-            baseline_angle=session_data["baseline_angle"]
+            baseline_angle=session_data["baseline_angle"],
+            average_fps=session_data.get("average_fps", 30.0),
+            productivity_level=session_data.get("productivity_level", "MODERATELY_PRODUCTIVE"),
+            session_duration_seconds=session_data.get("session_duration_seconds", 0.0)
         )
         
     except HTTPException:
@@ -578,7 +582,10 @@ def get_session_data(user_id: str):
             distracted_frames=session_data["distracted_frames"],
             away_frames=session_data["away_frames"],
             focus_score=session_data["focus_score"],
-            baseline_angle=session_data["baseline_angle"]
+            baseline_angle=session_data["baseline_angle"],
+            average_fps=session_data.get("average_fps", 30.0),
+            productivity_level=session_data.get("productivity_level", "MODERATELY_PRODUCTIVE"),
+            session_duration_seconds=session_data.get("session_duration_seconds", 0.0)
         )
         
     except HTTPException:
@@ -604,7 +611,7 @@ def get_active_users():
         return ActiveUsersResponse(
             active_users=active_users,
             total_count=len(active_users),
-            timestamp=datetime.now(datetime.timezone.utc)
+            timestamp=datetime.now()
         )
         
     except Exception as e:
@@ -629,7 +636,7 @@ def cleanup_inactive_sessions():
             "status": "success",
             "message": "Inactive sessions cleaned up",
             "active_users": len(focus_tracker.get_active_users()),
-            "timestamp": datetime.now(datetime.timezone.utc).isoformat()
+            "timestamp": datetime.now().isoformat()
         }
         
     except Exception as e:
@@ -654,7 +661,7 @@ def focus_health_check():
             status="healthy",
             active_sessions=active_sessions,
             service_version="1.0.0",
-            timestamp=datetime.now(datetime.timezone.utc)
+            timestamp=datetime.now()
         )
         
     except Exception as e:

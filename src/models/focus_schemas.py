@@ -36,6 +36,7 @@ class FocusResponse(BaseModel):
     current_state: FocusState = Field(..., description="Current focus state")
     focus_score: float = Field(..., description="Focus score (0-100)")
     baseline_angle: float = Field(..., description="Current baseline angle")
+    average_fps: float = Field(..., description="Current average FPS")
     face_metrics: Optional[FaceMetrics] = Field(None, description="Face metrics if detected")
     session_stats: Dict[str, Any] = Field(..., description="Session statistics")
     timestamp: datetime = Field(..., description="Response timestamp")
@@ -65,6 +66,9 @@ class SessionData(BaseModel):
     away_frames: int = Field(..., description="Number of away frames")
     focus_score: float = Field(..., description="Overall focus score")
     baseline_angle: float = Field(..., description="Final baseline angle")
+    average_fps: float = Field(..., description="Average frames per second")
+    productivity_level: str = Field(..., description="Productivity classification level")
+    session_duration_seconds: float = Field(..., description="Session duration in seconds")
 
 class ActiveUsersResponse(BaseModel):
     """Response model for active users endpoint."""
