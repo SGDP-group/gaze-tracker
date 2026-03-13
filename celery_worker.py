@@ -2,7 +2,9 @@
 Celery worker startup script.
 """
 
-from src.services.celery_app import celery_app
+import sys
+import os
 
 if __name__ == "__main__":
-    celery_app.start()
+    # Use the correct Celery 5.0+ syntax
+    os.system("uv run python -m celery -A src.services.celery_app.celery_app worker --loglevel=info")

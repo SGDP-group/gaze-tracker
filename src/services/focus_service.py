@@ -259,7 +259,22 @@ class FocusTracker:
             }
         
         reference_angle = session["reference_angle"]
-        gaze_deviation = abs(current_angle - reference_angle)
+        
+        # Normalize angles to handle circular nature (e.g., 180° and -180° are the same)
+        def normalize_angle(angle):
+            """Normalize angle to [-180, 180] range"""
+            while angle > 180:
+                angle -= 360
+            while angle < -180:
+                angle += 360
+            return angle
+        
+        ref_angle_norm = normalize_angle(reference_angle)
+        curr_angle_norm = normalize_angle(current_angle)
+        
+        # Calculate minimum angular distance
+        raw_diff = abs(curr_angle_norm - ref_angle_norm)
+        gaze_deviation = min(raw_diff, 360 - raw_diff)
         
         # Track deviation
         session["gaze_deviations"].append(gaze_deviation)
@@ -463,7 +478,7 @@ class FocusTracker:
             "average_fps": avg_fps,
             "productivity_level": productivity_level.value,
             "session_duration_seconds": session["total_frames"] / max(avg_fps, 1),
-            # Ground frame metrics
+            # Ground frame metrics - always include these fields
             "ground_frame_calibrated": session.get("ground_frame_calibrated", False),
             "reference_angle": session.get("reference_angle"),
             "gaze_consistency_score": gaze_consistency_score,
