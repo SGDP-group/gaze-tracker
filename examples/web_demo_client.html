@@ -325,7 +325,15 @@
                     <label for="userId">User ID:</label>
                     <input type="text" id="userId" value="web_user_123" placeholder="web_user_123">
                 </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="groundFrameCalibrated">
+                        Ground Frame Calibrated
+                    </label>
+                </div>
                 <button class="btn btn-primary" onclick="updateConfig()">Update Configuration</button>
+                <button class="btn btn-secondary" onclick="testCalibrateFunction()">Test Calibrate Function</button>
+                <button class="btn btn-secondary" onclick="calibrateGroundFrame()">Calibrate Ground Frame</button>
             </div>
 
             <!-- Focus Service Section -->
@@ -615,6 +623,87 @@
             }
         }
 
+        function testCalibrateFunction() {
+            console.log('Test function called - button is working!');
+            alert('Calibrate function test - button is working!');
+        }
+
+        async function calibrateGroundFrame() {
+            console.log('Calibrate Ground Frame button clicked'); // Debug log
+            
+            const userId = document.getElementById('userId').value;
+            console.log('User ID:', userId); // Debug log
+            
+            if (!userId) {
+                logResponse('Error', 'Please enter a User ID');
+                return;
+            }
+            
+            try {
+                // Check if camera is started
+                const video = document.getElementById('videoElement');
+                const canvas = document.getElementById('canvasElement');
+                
+                console.log('Video element:', video); // Debug log
+                console.log('Canvas element:', canvas); // Debug log
+                
+                if (!video || !canvas) {
+                    logResponse('Error', 'Camera or canvas element not found');
+                    return;
+                }
+                
+                console.log('Video ready state:', video.readyState); // Debug log
+                
+                const context = canvas.getContext('2d');
+                if (!context) {
+                    logResponse('Error', 'Cannot get canvas context');
+                    return;
+                }
+                
+                if (video.readyState !== video.HAVE_ENOUGH_DATA) {
+                    logResponse('Error', 'Camera not ready. Please start the camera first.');
+                    return;
+                }
+                
+                // Set canvas dimensions
+                canvas.width = video.videoWidth || 640;
+                canvas.height = video.videoHeight || 480;
+                
+                console.log('Canvas dimensions:', canvas.width, 'x', canvas.height); // Debug log
+                
+                // Capture current frame
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const frameData = canvas.toDataURL('image/jpeg', 0.8);
+                
+                console.log('Frame data length:', frameData.length); // Debug log
+                
+                const data = {
+                    user_id: userId,
+                    frame_data: frameData,
+                    image_width: canvas.width,
+                    image_height: canvas.height
+                };
+                
+                console.log('Sending calibration request...'); // Debug log
+                
+                const result = await makeApiRequest('POST', '/focus/ground-frame/calibrate', data);
+                
+                console.log('Calibration result:', result); // Debug log
+                
+                if (result.success) {
+                    logResponse('Ground Frame Calibration', result.data);
+                    document.getElementById('groundFrameCalibrated').checked = true;
+                    updateStatus('Ground frame calibrated successfully');
+                } else {
+                    logResponse('Ground Frame Calibration Error', result);
+                    updateStatus('Ground frame calibration failed');
+                }
+            } catch (error) {
+                console.error('Calibration error:', error); // Debug log
+                logResponse('Error', `Ground frame calibration failed: ${error.message}`);
+            }
+        }
+
         // Other API functions
         async function healthCheck() {
             // Check main health
@@ -802,7 +891,20 @@
                     <p><strong>State:</strong> <span style="color: ${getStateColor(data.current_state)}">${data.current_state}</span></p>
                     <p><strong>Score:</strong> ${data.focus_score.toFixed(1)}%</p>
                     <p><strong>Baseline Angle:</strong> ${data.baseline_angle.toFixed(1)}°</p>
+                    <p><strong>Average FPS:</strong> ${data.average_fps.toFixed(1)}</p>
             `;
+
+            // Add ground frame metrics if calibrated
+            if (data.session_stats.ground_frame_calibrated) {
+                html += `
+                    <p><strong>🎯 Ground Frame:</strong> <span style="color: #28a745">Calibrated</span></p>
+                    <p><strong>Gaze Consistency:</strong> ${data.session_stats.gaze_consistency_score ? data.session_stats.gaze_consistency_score.toFixed(1) + '%' : 'N/A'}</p>
+                    <p><strong>Gaze Deviation:</strong> ${data.session_stats.gaze_deviation ? data.session_stats.gaze_deviation.toFixed(1) + '°' : 'N/A'}</p>
+                    <p><strong>Is Consistent:</strong> ${data.session_stats.is_consistent !== null ? (data.session_stats.is_consistent ? '<span style="color: #28a745">✅ Yes</span>' : '<span style="color: #dc3545">❌ No</span>') : 'N/A'}</p>
+                `;
+            } else {
+                html += `<p><strong>🎯 Ground Frame:</strong> <span style="color: #6c757d">Not calibrated</span></p>`;
+            }
 
             if (data.face_metrics) {
                 html += `

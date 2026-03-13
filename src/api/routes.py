@@ -18,7 +18,8 @@ from src.models.schemas import (
 )
 from src.models.focus_schemas import (
     FrameRequest, FocusResponse, SessionStartRequest, SessionResponse as FocusSessionResponse,
-    SessionData, ActiveUsersResponse, ErrorResponse, HealthResponse
+    SessionData, ActiveUsersResponse, ErrorResponse, HealthResponse,
+    GroundFrameRequest, GroundFrameResponse
 )
 from src.api.dependencies import get_current_user
 from src.services.auth import create_user, get_user_by_id
@@ -408,6 +409,58 @@ def health_check(db: Session = Depends(get_db)):
 
 # ==================== Focus Tracking Endpoints ====================
 
+@router.post("/focus/ground-frame/calibrate", response_model=GroundFrameResponse)
+def calibrate_ground_frame(frame_request: GroundFrameRequest):
+    """
+    Calibrate ground frame for gaze direction reference.
+    
+    Args:
+        frame_request: Ground frame data and user information
+        
+    Returns:
+        Calibration result with reference angle
+    """
+    try:
+        import base64
+        import io
+        
+        # Decode base64 frame data
+        frame_data = base64.b64decode(frame_request.frame_data.split(',')[1])
+        image_shape = (frame_request.image_height, frame_request.image_width)
+        
+        # Calibrate ground frame
+        calibration_result = focus_tracker.calibrate_ground_frame(
+            frame_request.user_id, frame_data, image_shape
+        )
+        
+        if calibration_result["success"]:
+            return GroundFrameResponse(
+                success=True,
+                user_id=calibration_result["user_id"],
+                reference_angle=calibration_result["reference_angle"],
+                reference_magnitude=calibration_result["reference_magnitude"],
+                confidence=calibration_result["confidence"],
+                message=calibration_result["message"],
+                timestamp=datetime.fromisoformat(calibration_result["timestamp"])
+            )
+        else:
+            return GroundFrameResponse(
+                success=False,
+                user_id=frame_request.user_id,
+                reference_angle=0.0,
+                reference_magnitude=0.0,
+                confidence=0.0,
+                message=calibration_result.get("message", "Calibration failed"),
+                timestamp=datetime.now()
+            )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ground frame calibration failed: {str(e)}"
+        )
+
+
 @router.post("/focus/analyze", response_model=FocusResponse)
 def analyze_focus_frame(frame_request: FrameRequest):
     """
@@ -450,6 +503,7 @@ def analyze_focus_frame(frame_request: FrameRequest):
             current_state=focus_result["current_state"],
             focus_score=focus_result["focus_score"],
             baseline_angle=focus_result["baseline_angle"],
+            average_fps=focus_result.get("average_fps", 30.0),
             face_metrics=face_metrics_response,
             session_stats=focus_result["session_stats"],
             timestamp=datetime.fromisoformat(focus_result["timestamp"])

@@ -67,8 +67,8 @@ class FocusTracker:
     
     def _calculate_fps(self, session: Dict) -> float:
         """Calculate rolling average FPS from frame timestamps."""
-        timestamps = session["frame_timestamps"]
-        if len(timestamps) < 2:
+        timestamps = session.get("frame_timestamps", [])
+        if not timestamps or len(timestamps) < 2:
             return 30.0  # Default FPS
         
         # Keep only timestamps from last 10 seconds
@@ -88,11 +88,12 @@ class FocusTracker:
             fps = 30.0
         
         # Update FPS buffer and return rolling average
-        session["fps_buffer"].append(fps)
-        if len(session["fps_buffer"]) > 10:  # Keep last 10 FPS calculations
-            session["fps_buffer"].pop(0)
+        fps_buffer = session.get("fps_buffer", [])
+        fps_buffer.append(fps)
+        if len(fps_buffer) > 10:  # Keep last 10 FPS calculations
+            fps_buffer.pop(0)
         
-        return sum(session["fps_buffer"]) / len(session["fps_buffer"])
+        return sum(fps_buffer) / len(fps_buffer)
     
     def _classify_productivity(self, focus_score: float) -> ProductivityLevel:
         """Classify session productivity based on focus score."""
@@ -185,6 +186,109 @@ class FocusTracker:
             logger.error(f"Error extracting face metrics: {e}")
             return None
     
+    def calibrate_ground_frame(self, user_id: str, frame_data: bytes, image_shape: Tuple[int, int]) -> Dict:
+        """
+        Calibrate ground frame for gaze direction reference.
+        
+        Args:
+            user_id: Unique user identifier
+            frame_data: Raw image bytes for ground frame
+            image_shape: (height, width) of the image
+            
+        Returns:
+            Calibration result with reference angle and metrics
+        """
+        try:
+            # Extract face metrics from ground frame
+            face_metrics = self.extract_face_metrics(frame_data, image_shape)
+            
+            if face_metrics is None:
+                return {
+                    "success": False,
+                    "error": "No face detected in ground frame",
+                    "message": "Please ensure your face is clearly visible in the ground frame"
+                }
+            
+            # Initialize session if not exists
+            if user_id not in self.user_sessions:
+                self.update_user_session(user_id, None)  # Create empty session
+            
+            session = self.user_sessions[user_id]
+            
+            # Store ground frame reference
+            session["ground_frame_calibrated"] = True
+            session["reference_angle"] = face_metrics["angle"]
+            session["reference_magnitude"] = face_metrics["magnitude"]
+            session["gaze_deviations"] = []
+            session["gaze_consistency_buffer"] = []
+            
+            return {
+                "success": True,
+                "user_id": user_id,
+                "reference_angle": face_metrics["angle"],
+                "reference_magnitude": face_metrics["magnitude"],
+                "confidence": face_metrics["confidence"],
+                "message": "Ground frame calibrated successfully",
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calibrating ground frame: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "message": "Failed to calibrate ground frame"
+            }
+    
+    def _calculate_gaze_consistency(self, session: Dict, current_angle: float) -> Dict:
+        """
+        Calculate gaze consistency based on deviation from reference angle.
+        
+        Args:
+            session: User session data
+            current_angle: Current gaze angle
+            
+        Returns:
+            Gaze consistency metrics
+        """
+        if not session.get("ground_frame_calibrated") or session.get("reference_angle") is None:
+            return {
+                "gaze_consistency_score": None,
+                "gaze_deviation": None,
+                "is_consistent": None
+            }
+        
+        reference_angle = session["reference_angle"]
+        gaze_deviation = abs(current_angle - reference_angle)
+        
+        # Track deviation
+        session["gaze_deviations"].append(gaze_deviation)
+        
+        # Keep only last 50 deviations
+        if len(session["gaze_deviations"]) > 50:
+            session["gaze_deviations"].pop(0)
+        
+        # Calculate consistency score (100 = perfect alignment, 0 = completely off)
+        max_acceptable_deviation = 30.0  # degrees
+        consistency_score = max(0, 100 - (gaze_deviation / max_acceptable_deviation) * 100)
+        
+        # Update consistency buffer
+        session["gaze_consistency_buffer"].append(consistency_score)
+        if len(session["gaze_consistency_buffer"]) > 50:
+            session["gaze_consistency_buffer"].pop(0)
+        
+        # Calculate rolling average consistency
+        if session["gaze_consistency_buffer"]:
+            avg_consistency = sum(session["gaze_consistency_buffer"]) / len(session["gaze_consistency_buffer"])
+        else:
+            avg_consistency = consistency_score
+        
+        return {
+            "gaze_consistency_score": avg_consistency,
+            "gaze_deviation": gaze_deviation,
+            "is_consistent": gaze_deviation <= max_acceptable_deviation
+        }
+    
     def update_user_session(self, user_id: str, face_metrics: Optional[Dict]) -> Dict:
         """
         Update user's focus tracking session.
@@ -211,7 +315,13 @@ class FocusTracker:
                 "distraction_start": None,
                 "last_update": datetime.now().isoformat(),
                 "frame_timestamps": [],  # Track frame timestamps for FPS calculation
-                "fps_buffer": []  # Rolling FPS buffer
+                "fps_buffer": [],  # Rolling FPS buffer
+                # Ground frame calibration data
+                "ground_frame_calibrated": False,
+                "reference_angle": None,
+                "reference_magnitude": None,
+                "gaze_deviations": [],  # Track deviations from reference angle
+                "gaze_consistency_buffer": []  # Track gaze consistency over time
             }
         
         session = self.user_sessions[user_id]
@@ -220,6 +330,8 @@ class FocusTracker:
         session["last_update"] = current_time.isoformat()
         
         # Track frame timestamp for FPS calculation
+        if "frame_timestamps" not in session:
+            session["frame_timestamps"] = []
         session["frame_timestamps"].append(current_time)
         
         # Process face metrics
@@ -229,6 +341,9 @@ class FocusTracker:
             session["distraction_start"] = None
         else:
             current_angle = face_metrics["angle"]
+            
+            # Calculate gaze consistency if ground frame is calibrated
+            gaze_metrics = self._calculate_gaze_consistency(session, current_angle)
             
             # Update baseline with WMA (alpha=0.05)
             session["baseline_angle"] = (
@@ -279,6 +394,11 @@ class FocusTracker:
         # Calculate FPS (rolling average of last 10 seconds)
         avg_fps = self._calculate_fps(session)
         
+        # Get gaze consistency metrics
+        gaze_consistency_score = gaze_metrics.get("gaze_consistency_score") if 'gaze_metrics' in locals() else None
+        gaze_deviation = gaze_metrics.get("gaze_deviation") if 'gaze_metrics' in locals() else None
+        is_consistent = gaze_metrics.get("is_consistent") if 'gaze_metrics' in locals() else None
+        
         return {
             "user_id": user_id,
             "current_state": session["current_state"],
@@ -290,7 +410,11 @@ class FocusTracker:
                 "focused_frames": session["focused_frames"],
                 "distracted_frames": session["distracted_frames"],
                 "away_frames": session["away_frames"],
-                "session_duration": session["total_frames"] / max(avg_fps, 1)  # Use actual FPS
+                "session_duration": session["total_frames"] / max(avg_fps, 1),  # Use actual FPS
+                "ground_frame_calibrated": session.get("ground_frame_calibrated", False),
+                "gaze_consistency_score": gaze_consistency_score,
+                "gaze_deviation": gaze_deviation,
+                "is_consistent": is_consistent
             },
             "timestamp": session["last_update"]
         }
@@ -318,6 +442,14 @@ class FocusTracker:
         # Classify productivity
         productivity_level = self._classify_productivity(focus_score)
         
+        # Calculate ground frame metrics
+        gaze_consistency_score = None
+        average_gaze_deviation = None
+        
+        if session.get("ground_frame_calibrated") and session.get("gaze_deviations"):
+            gaze_consistency_score = sum(session["gaze_consistency_buffer"]) / len(session["gaze_consistency_buffer"]) if session["gaze_consistency_buffer"] else None
+            average_gaze_deviation = sum(session["gaze_deviations"]) / len(session["gaze_deviations"]) if session["gaze_deviations"] else None
+        
         return {
             "user_id": user_id,
             "session_start": session["session_start"],
@@ -330,7 +462,12 @@ class FocusTracker:
             "baseline_angle": session["baseline_angle"],
             "average_fps": avg_fps,
             "productivity_level": productivity_level.value,
-            "session_duration_seconds": session["total_frames"] / max(avg_fps, 1)
+            "session_duration_seconds": session["total_frames"] / max(avg_fps, 1),
+            # Ground frame metrics
+            "ground_frame_calibrated": session.get("ground_frame_calibrated", False),
+            "reference_angle": session.get("reference_angle"),
+            "gaze_consistency_score": gaze_consistency_score,
+            "average_gaze_deviation": average_gaze_deviation
         }
     
     def end_user_session(self, user_id: str) -> Optional[Dict]:
