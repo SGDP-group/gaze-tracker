@@ -6,6 +6,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
+from collections import defaultdict
+import json
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Import configuration
+from src.config import config
 
 from src.database.database import get_db
 from src.database.models import User, UserSession, UserFeedback, UserModel
@@ -564,24 +572,118 @@ def start_focus_session(session_request: SessionStartRequest):
 
 
 @router.post("/focus/session/end", response_model=SessionData)
-def end_focus_session(user_id: str):
+def end_focus_session(user_id: str, db: Session = Depends(get_db)):
     """
-    End a focus tracking session and return final data.
+    End a focus tracking session and return final data with comprehensive analytics.
     
     Args:
         user_id: User identifier
+        db: Database session for historical data
         
     Returns:
-        Complete session data
+        Complete session data with comprehensive analytics
     """
     try:
-        session_data = focus_tracker.end_user_session(user_id)
+        # Get historical sessions for enhanced analytics
+        historical_sessions = []
+        try:
+            from src.database.models import UserSession
+            sessions = db.query(UserSession).filter(
+                UserSession.user_id == user_id
+            ).order_by(UserSession.start_time.desc()).limit(50).all()
+            
+            for session in sessions:
+                historical_sessions.append({
+                    "session_start": session.start_time.isoformat(),
+                    "session_end": session.end_time.isoformat(),
+                    "total_frames": session.total_frames,
+                    "focused_frames": session.focused_frames,
+                    "distracted_frames": session.distracted_frames,
+                    "away_frames": session.away_frames,
+                    "focus_score": session.focus_score,
+                    "session_duration_seconds": session.duration_seconds,
+                    "completed": True
+                })
+        except Exception as e:
+            logger.warning(f"Could not fetch historical sessions: {e}")
+        
+        # Get peer comparison data (limited to recent users)
+        all_users_data = []
+        try:
+            from src.database.models import UserSession as DBUserSession, User as DBUser
+            # Get recent sessions from multiple users for peer comparison
+            recent_sessions = db.query(DBUserSession).join(DBUser).order_by(DBUserSession.created_at.desc()).limit(500).all()
+            
+            users_sessions = defaultdict(list)
+            for session in recent_sessions:
+                users_sessions[session.user_id].append({
+                    "session_start": session.start_time.isoformat(),
+                    "focus_score": session.focus_score,
+                    "total_frames": session.total_frames,
+                    "focused_frames": session.focused_frames,
+                    "session_duration_seconds": session.duration_seconds
+                })
+            
+            for user_id, sessions in users_sessions.items():
+                if len(sessions) >= 3:  # Only include users with sufficient data
+                    all_users_data.append({
+                        "user_id": user_id,
+                        "sessions": sessions
+                    })
+        except Exception as e:
+            logger.warning(f"Could not fetch peer comparison data: {e}")
+        
+        # Get session data with comprehensive analytics
+        session_data = focus_tracker.get_user_session_data(
+            user_id=user_id,
+            historical_sessions=historical_sessions,
+            all_users_data=all_users_data
+        )
         
         if not session_data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No active session found for user {user_id}"
             )
+        
+        # Store session in database
+        try:
+            from src.database.models import UserSession as DBUserSession
+            import uuid
+            
+            db_session = DBUserSession(
+                user_id=user_id,
+                session_id=f"session_{uuid.uuid4().hex[:8]}",
+                start_time=datetime.fromisoformat(session_data["session_start"]),
+                end_time=datetime.fromisoformat(session_data["session_end"]),
+                duration_seconds=session_data["session_duration_seconds"],
+                total_frames=session_data["total_frames"],
+                focused_frames=session_data["focused_frames"],
+                distracted_frames=session_data["distracted_frames"],
+                away_frames=session_data["away_frames"],
+                focus_score=session_data["focus_score"],
+                baseline_angle=session_data["baseline_angle"],
+                raw_session_data=json.dumps(session_data)
+            )
+            db.add(db_session)
+            db.commit()
+        except Exception as e:
+            logger.error(f"Could not store session in database: {e}")
+        
+        # Convert comprehensive analytics to response format
+        comprehensive_analytics = None
+        if session_data.get("comprehensive_analytics"):
+            try:
+                analytics_dict = session_data["comprehensive_analytics"]
+                comprehensive_analytics = {
+                    "deep_work_metrics": analytics_dict.get("deep_work_metrics", {}),
+                    "distraction_analytics": analytics_dict.get("distraction_analytics", {}),
+                    "biological_trends": analytics_dict.get("biological_trends", {}),
+                    "gamification_stats": analytics_dict.get("gamification_stats", {}),
+                    "insights": analytics_dict.get("insights", [])
+                }
+            except Exception as e:
+                logger.error(f"Error formatting comprehensive analytics: {e}")
         
         return SessionData(
             user_id=session_data["user_id"],
@@ -595,7 +697,12 @@ def end_focus_session(user_id: str):
             baseline_angle=session_data["baseline_angle"],
             average_fps=session_data.get("average_fps", 30.0),
             productivity_level=session_data.get("productivity_level", "MODERATELY_PRODUCTIVE"),
-            session_duration_seconds=session_data.get("session_duration_seconds", 0.0)
+            session_duration_seconds=session_data.get("session_duration_seconds", 0.0),
+            ground_frame_calibrated=session_data.get("ground_frame_calibrated", False),
+            reference_angle=session_data.get("reference_angle"),
+            gaze_consistency_score=session_data.get("gaze_consistency_score"),
+            average_gaze_deviation=session_data.get("average_gaze_deviation"),
+            comprehensive_analytics=comprehensive_analytics
         )
         
     except HTTPException:
@@ -608,24 +715,94 @@ def end_focus_session(user_id: str):
 
 
 @router.get("/focus/session/{user_id}", response_model=SessionData)
-def get_session_data(user_id: str):
+def get_session_data(user_id: str, db: Session = Depends(get_db)):
     """
-    Get current session data for a user.
+    Get current session data for a user with comprehensive analytics.
     
     Args:
         user_id: User identifier
+        db: Database session for historical data
         
     Returns:
-        Current session data
+        Current session data with comprehensive analytics
     """
     try:
-        session_data = focus_tracker.get_user_session_data(user_id)
+        # Get historical sessions for enhanced analytics
+        historical_sessions = []
+        try:
+            from src.database.models import UserSession
+            sessions = db.query(UserSession).filter(
+                UserSession.user_id == user_id
+            ).order_by(UserSession.start_time.desc()).limit(50).all()
+            
+            for session in sessions:
+                historical_sessions.append({
+                    "session_start": session.start_time.isoformat(),
+                    "session_end": session.end_time.isoformat(),
+                    "total_frames": session.total_frames,
+                    "focused_frames": session.focused_frames,
+                    "distracted_frames": session.distracted_frames,
+                    "away_frames": session.away_frames,
+                    "focus_score": session.focus_score,
+                    "session_duration_seconds": session.duration_seconds,
+                    "completed": True
+                })
+        except Exception as e:
+            logger.warning(f"Could not fetch historical sessions: {e}")
+        
+        # Get peer comparison data (limited to recent users)
+        all_users_data = []
+        try:
+            from src.database.models import UserSession as DBUserSession, User as DBUser
+            # Get recent sessions from multiple users for peer comparison
+            recent_sessions = db.query(DBUserSession).join(DBUser).order_by(DBUserSession.created_at.desc()).limit(500).all()
+            
+            users_sessions = defaultdict(list)
+            for session in recent_sessions:
+                users_sessions[session.user_id].append({
+                    "session_start": session.start_time.isoformat(),
+                    "focus_score": session.focus_score,
+                    "total_frames": session.total_frames,
+                    "focused_frames": session.focused_frames,
+                    "session_duration_seconds": session.duration_seconds
+                })
+            
+            for user_id, sessions in users_sessions.items():
+                if len(sessions) >= 3:  # Only include users with sufficient data
+                    all_users_data.append({
+                        "user_id": user_id,
+                        "sessions": sessions
+                    })
+        except Exception as e:
+            logger.warning(f"Could not fetch peer comparison data: {e}")
+        
+        # Get session data with comprehensive analytics
+        session_data = focus_tracker.get_user_session_data(
+            user_id=user_id,
+            historical_sessions=historical_sessions,
+            all_users_data=all_users_data
+        )
         
         if not session_data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No session found for user {user_id}"
             )
+        
+        # Convert comprehensive analytics to response format
+        comprehensive_analytics = None
+        if session_data.get("comprehensive_analytics"):
+            try:
+                analytics_dict = session_data["comprehensive_analytics"]
+                comprehensive_analytics = {
+                    "deep_work_metrics": analytics_dict.get("deep_work_metrics", {}),
+                    "distraction_analytics": analytics_dict.get("distraction_analytics", {}),
+                    "biological_trends": analytics_dict.get("biological_trends", {}),
+                    "gamification_stats": analytics_dict.get("gamification_stats", {}),
+                    "insights": analytics_dict.get("insights", [])
+                }
+            except Exception as e:
+                logger.error(f"Error formatting comprehensive analytics: {e}")
         
         return SessionData(
             user_id=session_data["user_id"],
@@ -639,7 +816,12 @@ def get_session_data(user_id: str):
             baseline_angle=session_data["baseline_angle"],
             average_fps=session_data.get("average_fps", 30.0),
             productivity_level=session_data.get("productivity_level", "MODERATELY_PRODUCTIVE"),
-            session_duration_seconds=session_data.get("session_duration_seconds", 0.0)
+            session_duration_seconds=session_data.get("session_duration_seconds", 0.0),
+            ground_frame_calibrated=session_data.get("ground_frame_calibrated", False),
+            reference_angle=session_data.get("reference_angle"),
+            gaze_consistency_score=session_data.get("gaze_consistency_score"),
+            average_gaze_deviation=session_data.get("average_gaze_deviation"),
+            comprehensive_analytics=comprehensive_analytics
         )
         
     except HTTPException:
@@ -678,18 +860,19 @@ def get_active_users():
 @router.post("/focus/cleanup")
 def cleanup_inactive_sessions():
     """
-    Clean up inactive sessions (timeout: 30 minutes).
+    Clean up inactive sessions using config timeout.
     
     Returns:
         Cleanup status
     """
     try:
-        focus_tracker.cleanup_inactive_sessions(timeout_minutes=30)
+        focus_tracker.cleanup_inactive_sessions(timeout_minutes=config.SESSION_TIMEOUT_MINUTES)
         
         return {
             "status": "success",
             "message": "Inactive sessions cleaned up",
             "active_users": len(focus_tracker.get_active_users()),
+            "timeout_minutes": config.SESSION_TIMEOUT_MINUTES,
             "timestamp": datetime.now().isoformat()
         }
         

@@ -17,6 +17,10 @@ from enum import Enum
 
 logger = logging.getLogger(__name__)
 
+# Import analytics service and configuration
+from .analytics_service import analytics_service
+from src.config import config
+
 class ProductivityLevel(str, Enum):
     """Productivity classification levels."""
     HIGHLY_PRODUCTIVE = "HIGHLY_PRODUCTIVE"
@@ -64,6 +68,29 @@ class FocusTracker:
         y_px = min(math.floor(normalized_y * image_height), image_height - 1)
         
         return x_px, y_px
+    
+    def _calculate_inconsistency_penalty(self, focus_buffer: List[str]) -> float:
+        """Calculate penalty for inconsistent focus patterns."""
+        if not config.INCONSISTENCY_PENALTY_ENABLED or len(focus_buffer) < 10:
+            return 0.0
+        
+        # Count state changes
+        state_changes = 0
+        for i in range(1, len(focus_buffer)):
+            if focus_buffer[i] != focus_buffer[i-1]:
+                state_changes += 1
+        
+        # Calculate penalty based on change frequency
+        max_possible_changes = len(focus_buffer) - 1
+        change_frequency = state_changes / max_possible_changes
+        
+        # Apply penalty factor
+        penalty = change_frequency * config.INCONSISTENCY_PENALTY_FACTOR * 100
+        
+        # Cap at maximum penalty
+        penalty = min(penalty, config.MAX_INCONSISTENCY_PENALTY)
+        
+        return penalty
     
     def _calculate_fps(self, session: Dict) -> float:
         """Calculate rolling average FPS from frame timestamps."""
@@ -336,7 +363,13 @@ class FocusTracker:
                 "reference_angle": None,
                 "reference_magnitude": None,
                 "gaze_deviations": [],  # Track deviations from reference angle
-                "gaze_consistency_buffer": []  # Track gaze consistency over time
+                "gaze_consistency_buffer": [],  # Track gaze consistency over time
+                # Enhanced analytics tracking
+                "interruptions": [],  # Track interruption times
+                "focus_streaks": [],  # Track focus streak periods
+                "current_focus_streak_start": None,  # Track current streak start
+                "session_states": [],  # Detailed state tracking with timestamps
+                "completed": True  # Track if session was completed properly
             }
         
         session = self.user_sessions[user_id]
@@ -349,6 +382,9 @@ class FocusTracker:
             session["frame_timestamps"] = []
         session["frame_timestamps"].append(current_time)
         
+        # Track detailed state changes with timestamps
+        previous_state = session.get("current_state", "AWAY")
+        
         # Process face metrics
         if face_metrics is None:
             session["current_state"] = "AWAY"
@@ -360,27 +396,27 @@ class FocusTracker:
             # Calculate gaze consistency if ground frame is calibrated
             gaze_metrics = self._calculate_gaze_consistency(session, current_angle)
             
-            # Update baseline with WMA (alpha=0.05)
+            # Update baseline with WMA using config alpha
             session["baseline_angle"] = (
-                0.05 * current_angle + 
-                0.95 * session["baseline_angle"]
+                config.BASELINE_ALPHA * current_angle + 
+                (1 - config.BASELINE_ALPHA) * session["baseline_angle"]
             )
             
             # Calculate angle difference
             angle_diff = abs(current_angle - session["baseline_angle"])
             
-            # Determine focus state
+            # Determine focus state using config parameters
             now = datetime.now()
-            if angle_diff < 20:
+            if angle_diff < config.FOCUSED_ANGLE_THRESHOLD:
                 session["current_state"] = "FOCUSED"
                 session["focused_frames"] += 1
                 session["distraction_start"] = None
-            elif angle_diff > 30:
+            elif angle_diff > config.DISTRACTED_ANGLE_THRESHOLD:
                 if session["distraction_start"] is None:
                     session["distraction_start"] = now
                 
                 elapsed = (now - session["distraction_start"]).total_seconds()
-                if elapsed >= 2.0:
+                if elapsed >= config.DISTRACTION_CONFIRMATION_TIME:
                     session["current_state"] = "DISTRACTED"
                     session["distracted_frames"] += 1
                 else:
@@ -389,20 +425,73 @@ class FocusTracker:
                     session["focused_frames"] += 1
                     session["distraction_start"] = None
             else:
-                # Angle between 20-30 degrees, consider as FOCUSED
+                # Angle between thresholds, consider as FOCUSED
                 session["current_state"] = "FOCUSED"
                 session["focused_frames"] += 1
                 session["distraction_start"] = None
         
-        # Update focus buffer (keep last 50 states)
+        # Track state changes for enhanced analytics
+        if previous_state != session["current_state"]:
+            state_change = {
+                "timestamp": current_time.isoformat(),
+                "from_state": previous_state,
+                "to_state": session["current_state"],
+                "frame_number": session["total_frames"]
+            }
+            session["session_states"].append(state_change)
+            
+            # Track focus streaks
+            if session["current_state"] == "FOCUSED":
+                if previous_state != "FOCUSED":
+                    session["current_focus_streak_start"] = current_time
+            else:
+                if session["current_focus_streak_start"] is not None:
+                    streak_duration = (current_time - session["current_focus_streak_start"]).total_seconds()
+                    session["focus_streaks"].append({
+                        "start_time": session["current_focus_streak_start"].isoformat(),
+                        "end_time": current_time.isoformat(),
+                        "duration_seconds": streak_duration
+                    })
+                    session["current_focus_streak_start"] = None
+            
+            # Track interruptions (transitions from FOCUSED to DISTRACTED/AWAY)
+            if previous_state == "FOCUSED" and session["current_state"] in ["DISTRACTED", "AWAY"]:
+                session["interruptions"].append({
+                    "timestamp": current_time.isoformat(),
+                    "from_state": previous_state,
+                    "to_state": session["current_state"],
+                    "frame_number": session["total_frames"]
+                })
+        
+        # Update focus buffer using config size
         session["focus_buffer"].append(session["current_state"])
-        if len(session["focus_buffer"]) > 50:
+        if len(session["focus_buffer"]) > config.FOCUS_BUFFER_SIZE:
             session["focus_buffer"].pop(0)
         
-        # Calculate focus score
+        # Calculate focus score with realistic variation and inconsistency penalties
         if session["focus_buffer"]:
             focused_count = sum(1 for state in session["focus_buffer"] if state == "FOCUSED")
-            focus_score = (focused_count / len(session["focus_buffer"])) * 100
+            base_focus_score = (focused_count / len(session["focus_buffer"])) * 100
+            
+            # Calculate inconsistency penalty
+            inconsistency_penalty = self._calculate_inconsistency_penalty(session["focus_buffer"])
+            
+            # Apply penalty to base score
+            base_focus_score = max(0, base_focus_score - inconsistency_penalty)
+            
+            # Add realistic variation using config thresholds
+            if base_focus_score > config.MAX_REALISTIC_FOCUS_SCORE:
+                # Cap at max realistic score with diminishing returns
+                focus_score = config.MAX_REALISTIC_FOCUS_SCORE + (base_focus_score - config.MAX_REALISTIC_FOCUS_SCORE) * 0.3
+            elif base_focus_score > config.HIGH_FOCUS_THRESHOLD:
+                # High focus range with small variation
+                focus_score = base_focus_score - (config.MAX_REALISTIC_FOCUS_SCORE - base_focus_score) * 0.1
+            else:
+                # Normal calculation with small randomization
+                import random
+                focus_score = max(0, base_focus_score + random.uniform(-2, 2))
+            
+            focus_score = round(focus_score, 1)
         else:
             focus_score = 0.0
         
@@ -434,17 +523,37 @@ class FocusTracker:
             "timestamp": session["last_update"]
         }
     
-    def get_user_session_data(self, user_id: str) -> Optional[Dict]:
-        """Get complete session data for a user."""
+    def get_user_session_data(self, user_id: str, historical_sessions: List[Dict] = None, all_users_data: List[Dict] = None) -> Optional[Dict]:
+        """Get complete session data for a user with comprehensive analytics."""
         if user_id not in self.user_sessions:
             return None
         
         session = self.user_sessions[user_id]
         
-        # Calculate final metrics
+        # Calculate final metrics with realistic variation and inconsistency penalties
         if session["focus_buffer"]:
             focused_count = sum(1 for state in session["focus_buffer"] if state == "FOCUSED")
-            focus_score = (focused_count / len(session["focus_buffer"])) * 100
+            base_focus_score = (focused_count / len(session["focus_buffer"])) * 100
+            
+            # Calculate inconsistency penalty
+            inconsistency_penalty = self._calculate_inconsistency_penalty(session["focus_buffer"])
+            
+            # Apply penalty to base score
+            base_focus_score = max(0, base_focus_score - inconsistency_penalty)
+            
+            # Add realistic variation using config thresholds
+            if base_focus_score > config.MAX_REALISTIC_FOCUS_SCORE:
+                # Cap at max realistic score with diminishing returns
+                focus_score = config.MAX_REALISTIC_FOCUS_SCORE + (base_focus_score - config.MAX_REALISTIC_FOCUS_SCORE) * 0.3
+            elif base_focus_score > config.HIGH_FOCUS_THRESHOLD:
+                # High focus range with small variation
+                focus_score = base_focus_score - (config.MAX_REALISTIC_FOCUS_SCORE - base_focus_score) * 0.1
+            else:
+                # Normal calculation with small randomization
+                import random
+                focus_score = max(0, base_focus_score + random.uniform(-2, 2))
+            
+            focus_score = round(focus_score, 1)
         else:
             focus_score = 0.0
         
@@ -465,7 +574,8 @@ class FocusTracker:
             gaze_consistency_score = sum(session["gaze_consistency_buffer"]) / len(session["gaze_consistency_buffer"]) if session["gaze_consistency_buffer"] else None
             average_gaze_deviation = sum(session["gaze_deviations"]) / len(session["gaze_deviations"]) if session["gaze_deviations"] else None
         
-        return {
+        # Prepare session data for analytics
+        session_data_for_analytics = {
             "user_id": user_id,
             "session_start": session["session_start"],
             "session_end": session["last_update"],
@@ -482,7 +592,30 @@ class FocusTracker:
             "ground_frame_calibrated": session.get("ground_frame_calibrated", False),
             "reference_angle": session.get("reference_angle"),
             "gaze_consistency_score": gaze_consistency_score,
-            "average_gaze_deviation": average_gaze_deviation
+            "average_gaze_deviation": average_gaze_deviation,
+            # Enhanced analytics data
+            "focus_buffer": session["focus_buffer"],
+            "interruptions": session.get("interruptions", []),
+            "focus_streaks": session.get("focus_streaks", []),
+            "session_states": session.get("session_states", []),
+            "completed": session.get("completed", True)
+        }
+        
+        # Generate comprehensive analytics
+        try:
+            comprehensive_analytics = analytics_service.generate_comprehensive_session_report(
+                user_id=user_id,
+                session_data=session_data_for_analytics,
+                historical_sessions=historical_sessions or [],
+                all_users_data=all_users_data or []
+            )
+        except Exception as e:
+            logger.error(f"Error generating comprehensive analytics: {e}")
+            comprehensive_analytics = None
+        
+        return {
+            **session_data_for_analytics,
+            "comprehensive_analytics": comprehensive_analytics
         }
     
     def end_user_session(self, user_id: str) -> Optional[Dict]:

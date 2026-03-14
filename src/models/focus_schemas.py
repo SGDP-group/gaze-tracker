@@ -13,6 +13,43 @@ class FocusState(str, Enum):
     DISTRACTED = "DISTRACTED"
     AWAY = "AWAY"
 
+class DeepWorkMetrics(BaseModel):
+    """Core Deep Work Metrics."""
+    focus_duration: Dict[str, float] = Field(..., description="Focus duration metrics")
+    focus_to_rest_ratio: float = Field(..., description="Ratio of focus to rest time")
+    longest_focus_streak: Dict[str, float] = Field(..., description="Longest uninterrupted focus streak")
+    session_completion_rate: float = Field(..., description="Percentage of completed sessions")
+    focus_efficiency: float = Field(..., description="Focus efficiency percentage")
+
+class DistractionAnalytics(BaseModel):
+    """Distraction & Interference Analytics."""
+    interruption_count: int = Field(..., description="Number of significant interruptions")
+    context_switching_cost: Dict[str, float] = Field(..., description="Time lost to context switching")
+    distraction_patterns: Dict[str, Any] = Field(..., description="Patterns in distractions")
+    recovery_metrics: Dict[str, Any] = Field(..., description="Recovery time metrics")
+    distraction_frequency: float = Field(..., description="Frequency of distractions")
+
+class BiologicalTrends(BaseModel):
+    """Biological & Rhythmic Trends."""
+    focus_heatmap: List[Dict[str, Any]] = Field(..., description="Focus heatmap by hour/day")
+    peak_performance_times: List[Dict[str, Any]] = Field(..., description="Peak performance times")
+    rhythmic_insights: Dict[str, Any] = Field(..., description="Rhythmic pattern insights")
+
+class GamificationStats(BaseModel):
+    """Gamification & Retention Stats."""
+    focus_streaks: Dict[str, Any] = Field(..., description="Focus streak information")
+    peer_comparison: Dict[str, Any] = Field(..., description="Peer comparison metrics")
+    achievements: List[Dict[str, Any]] = Field(..., description="User achievements")
+    retention_metrics: Dict[str, Any] = Field(..., description="Retention metrics")
+
+class ComprehensiveAnalytics(BaseModel):
+    """Comprehensive session analytics."""
+    deep_work_metrics: DeepWorkMetrics = Field(..., description="Core deep work metrics")
+    distraction_analytics: DistractionAnalytics = Field(..., description="Distraction analytics")
+    biological_trends: BiologicalTrends = Field(..., description="Biological trends")
+    gamification_stats: GamificationStats = Field(..., description="Gamification stats")
+    insights: List[str] = Field(..., description="Personalized insights")
+
 class FrameRequest(BaseModel):
     """Request model for frame analysis."""
     user_id: str = Field(..., description="Unique user identifier")
@@ -75,7 +112,7 @@ class SessionResponse(BaseModel):
     message: str = Field(..., description="Status message")
 
 class SessionData(BaseModel):
-    """Session data response model."""
+    """Session data response model with comprehensive analytics."""
     user_id: str = Field(..., description="User identifier")
     session_start: datetime = Field(..., description="Session start time")
     session_end: datetime = Field(..., description="Session end time")
@@ -93,6 +130,8 @@ class SessionData(BaseModel):
     reference_angle: Optional[float] = Field(None, description="Reference gaze angle from ground frame")
     gaze_consistency_score: Optional[float] = Field(None, description="Gaze consistency score (0-100)")
     average_gaze_deviation: Optional[float] = Field(None, description="Average deviation from reference angle")
+    # Comprehensive analytics
+    comprehensive_analytics: Optional[ComprehensiveAnalytics] = Field(None, description="Comprehensive session analytics")
 
 class ActiveUsersResponse(BaseModel):
     """Response model for active users endpoint."""
