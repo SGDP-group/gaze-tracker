@@ -51,6 +51,169 @@
             padding: 30px;
         }
 
+        .analytics-section {
+            grid-column: 1 / -1;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 15px;
+            padding: 30px;
+            border: 2px solid #dee2e6;
+            display: none;
+        }
+
+        .analytics-section.active {
+            display: block;
+        }
+
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-top: 25px;
+        }
+
+        .analytics-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            border-left: 4px solid #007bff;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .analytics-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.12);
+        }
+
+        .analytics-card h3 {
+            color: #495057;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .metric-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #007bff;
+            margin: 10px 0;
+        }
+
+        .metric-label {
+            color: #6c757d;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+
+        .metric-detail {
+            color: #495057;
+            font-size: 0.85em;
+            line-height: 1.4;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745, #20c997);
+            transition: width 0.5s ease;
+        }
+
+        .insight-item {
+            background: #f8f9fa;
+            border-left: 3px solid #17a2b8;
+            padding: 10px 15px;
+            margin: 8px 0;
+            border-radius: 0 5px 5px 0;
+            font-size: 0.9em;
+            color: #495057;
+        }
+
+        .achievement-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #ffc107, #e0a800);
+            color: #212529;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 600;
+            margin: 3px;
+        }
+
+        .heatmap-container {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 2px;
+            margin: 15px 0;
+            font-size: 0.7em;
+        }
+
+        .heatmap-cell {
+            aspect-ratio: 1;
+            border-radius: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+        }
+
+        .chart-container {
+            position: relative;
+            height: 200px;
+            margin: 15px 0;
+        }
+
+        .bar-chart {
+            display: flex;
+            align-items: flex-end;
+            height: 150px;
+            gap: 8px;
+            margin: 15px 0;
+        }
+
+        .bar {
+            flex: 1;
+            background: linear-gradient(180deg, #007bff, #0056b3);
+            border-radius: 4px 4px 0 0;
+            position: relative;
+            min-height: 5px;
+            transition: all 0.3s;
+        }
+
+        .bar:hover {
+            opacity: 0.8;
+        }
+
+        .bar-label {
+            position: absolute;
+            bottom: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.7em;
+            color: #495057;
+        }
+
+        .bar-value {
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.8em;
+            font-weight: bold;
+            color: #007bff;
+        }
+
         .section {
             background: #f8f9fa;
             border-radius: 10px;
@@ -350,6 +513,7 @@
                     <button class="btn btn-warning" onclick="endFocusSession()">End Session</button>
                     <button class="btn btn-info" onclick="getActiveUsers()">Active Users</button>
                     <button class="btn btn-danger" onclick="cleanupSessions()">Cleanup Sessions</button>
+                    <button class="btn btn-secondary" onclick="showAnalyticsFromSession()">Show Analytics</button>
                 </div>
             </div>
 
@@ -401,6 +565,17 @@
                         <div class="response-title">System Status</div>
                         <div class="response-data">Click "Health Check" to test API connection...</div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Analytics Dashboard Section -->
+            <div id="analyticsSection" class="analytics-section">
+                <h2>📊 Comprehensive Analytics Dashboard</h2>
+                <button class="btn btn-warning" onclick="hideAnalytics()">Hide Analytics</button>
+                <button class="btn btn-info" onclick="refreshAnalytics()">Refresh Analytics</button>
+                
+                <div class="analytics-grid" id="analyticsGrid">
+                    <!-- Analytics cards will be dynamically inserted here -->
                 </div>
             </div>
         </div>
@@ -592,9 +767,24 @@
             if (result.success) {
                 updateStatus(`Session data: ${result.data.total_frames} frames`);
                 logResponse('Session Data', result.data);
+                
+                // Update focus info with current session data
+                updateFocusInfo(result.data);
             } else {
                 updateStatus('Failed to get session data');
                 logResponse('Session Data Error', result);
+            }
+        }
+
+        async function showAnalyticsFromSession() {
+            const result = await makeApiRequest('GET', `/focus/session/${userId}`);
+            
+            if (result.success && result.data.comprehensive_analytics) {
+                showAnalytics(result.data.comprehensive_analytics);
+                logResponse('Analytics Displayed', result.data.comprehensive_analytics);
+            } else {
+                updateStatus('No analytics data available - end a session first');
+                logResponse('Analytics Error', result);
             }
         }
 
@@ -605,10 +795,220 @@
                 sessionId = null;
                 updateStatus(`Session ended: Final score ${result.data.focus_score.toFixed(1)}%`);
                 logResponse('End Session', result.data);
+                
+                // Show comprehensive analytics if available
+                if (result.data.comprehensive_analytics) {
+                    showAnalytics(result.data.comprehensive_analytics);
+                }
             } else {
                 updateStatus('Failed to end session');
                 logResponse('End Session Error', result);
             }
+        }
+
+        // Analytics functions
+        function showAnalytics(analytics) {
+            const analyticsSection = document.getElementById('analyticsSection');
+            const analyticsGrid = document.getElementById('analyticsGrid');
+            
+            analyticsSection.classList.add('active');
+            analyticsGrid.innerHTML = '';
+            
+            // Deep Work Metrics
+            if (analytics.deep_work_metrics) {
+                analyticsGrid.appendChild(createDeepWorkCard(analytics.deep_work_metrics));
+            }
+            
+            // Distraction Analytics
+            if (analytics.distraction_analytics) {
+                analyticsGrid.appendChild(createDistractionCard(analytics.distraction_analytics));
+            }
+            
+            // Biological Trends
+            if (analytics.biological_trends) {
+                analyticsGrid.appendChild(createBiologicalCard(analytics.biological_trends));
+            }
+            
+            // Gamification Stats
+            if (analytics.gamification_stats) {
+                analyticsGrid.appendChild(createGamificationCard(analytics.gamification_stats));
+            }
+            
+            // Insights
+            if (analytics.insights && analytics.insights.length > 0) {
+                analyticsGrid.appendChild(createInsightsCard(analytics.insights));
+            }
+            
+            updateStatus('Analytics dashboard updated');
+        }
+
+        function hideAnalytics() {
+            const analyticsSection = document.getElementById('analyticsSection');
+            analyticsSection.classList.remove('active');
+            updateStatus('Analytics dashboard hidden');
+        }
+
+        async function refreshAnalytics() {
+            const result = await makeApiRequest('GET', `/focus/session/${userId}`);
+            
+            if (result.success && result.data.comprehensive_analytics) {
+                showAnalytics(result.data.comprehensive_analytics);
+            } else {
+                updateStatus('No analytics data available');
+            }
+        }
+
+        function createDeepWorkCard(metrics) {
+            const card = document.createElement('div');
+            card.className = 'analytics-card';
+            
+            const focusDuration = metrics.focus_duration || {};
+            const efficiency = metrics.focus_efficiency || 0;
+            
+            card.innerHTML = `
+                <h3>🎯 Deep Work Metrics</h3>
+                <div class="metric-label">Focus Duration (Current)</div>
+                <div class="metric-value">${(focusDuration.current_session_hours || 0).toFixed(2)}h</div>
+                <div class="metric-detail">Daily: ${(focusDuration.daily_total_hours || 0).toFixed(2)}h | Weekly: ${(focusDuration.weekly_total_hours || 0).toFixed(2)}h</div>
+                
+                <div class="metric-label" style="margin-top: 15px;">Focus Efficiency</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${Math.min(efficiency, 100)}%"></div>
+                </div>
+                <div class="metric-detail">${efficiency.toFixed(1)}% of session time focused</div>
+                
+                <div class="metric-label" style="margin-top: 15px;">Focus-to-Rest Ratio</div>
+                <div class="metric-value" style="font-size: 1.5em;">${metrics.focus_to_rest_ratio || 0}:1</div>
+                <div class="metric-detail">Higher ratio indicates better focus consistency</div>
+                
+                <div class="metric-label" style="margin-top: 15px;">Longest Focus Streak</div>
+                <div class="metric-value" style="font-size: 1.2em;">${(metrics.longest_focus_streak?.minutes || 0).toFixed(1)}m</div>
+                <div class="metric-detail">Best continuous focus period</div>
+            `;
+            
+            return card;
+        }
+
+        function createDistractionCard(metrics) {
+            const card = document.createElement('div');
+            card.className = 'analytics-card';
+            card.style.borderLeftColor = '#dc3545';
+            
+            const contextCost = metrics.context_switching_cost || {};
+            const recovery = metrics.recovery_metrics || {};
+            
+            card.innerHTML = `
+                <h3>🚫 Distraction Analytics</h3>
+                <div class="metric-label">Interruption Count</div>
+                <div class="metric-value">${metrics.interruption_count || 0}</div>
+                <div class="metric-detail">Significant distractions (>60s)</div>
+                
+                <div class="metric-label" style="margin-top: 15px;">Context Switching Cost</div>
+                <div class="metric-value" style="font-size: 1.5em;">${(contextCost.total_minutes || 0).toFixed(1)}m</div>
+                <div class="metric-detail">Productivity lost to interruptions</div>
+                
+                <div class="metric-label" style="margin-top: 15px;">Distraction Frequency</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${Math.min(metrics.distraction_frequency || 0, 100)}%; background: linear-gradient(90deg, #dc3545, #c82333)"></div>
+                </div>
+                <div class="metric-detail">${(metrics.distraction_frequency || 0).toFixed(1)}% of session time</div>
+                
+                <div class="metric-label" style="margin-top: 15px;">Average Recovery Time</div>
+                <div class="metric-value" style="font-size: 1.2em;">${(recovery.average_recovery_time_seconds || 0).toFixed(1)}s</div>
+                <div class="metric-detail">Time to refocus after distraction</div>
+            `;
+            
+            return card;
+        }
+
+        function createBiologicalCard(trends) {
+            const card = document.createElement('div');
+            card.className = 'analytics-card';
+            card.style.borderLeftColor = '#28a745';
+            
+            const peakTimes = trends.peak_performance_times || [];
+            const heatmap = trends.focus_heatmap || [];
+            
+            card.innerHTML = `
+                <h3>🌱 Biological Trends</h3>
+                <div class="metric-label">Peak Performance Time</div>
+                <div class="metric-value" style="font-size: 1.5em;">${peakTimes.length > 0 ? `${peakTimes[0].hour}:00` : 'N/A'}</div>
+                <div class="metric-detail">${peakTimes.length > 0 ? `Score: ${(peakTimes[0].average_focus_score || 0).toFixed(1)}%` : 'No data available'}</div>
+                
+                <div class="metric-label" style="margin-top: 15px;">Focus Heatmap (Last 7 Days)</div>
+                <div class="heatmap-container">
+                    ${generateHeatmapCells(heatmap)}
+                </div>
+                <div class="metric-detail">Hour × Day performance patterns</div>
+                
+                <div class="metric-label" style="margin-top: 15px;">Pattern Consistency</div>
+                <div class="metric-value" style="font-size: 1.2em;">${trends.rhythmic_insights?.pattern_consistency ? (trends.rhythmic_insights.pattern_consistency).toFixed(0) : 'N/A'}%</div>
+                <div class="metric-detail">Predictability of focus patterns</div>
+            `;
+            
+            return card;
+        }
+
+        function createGamificationCard(stats) {
+            const card = document.createElement('div');
+            card.className = 'analytics-card';
+            card.style.borderLeftColor = '#ffc107';
+            
+            const streaks = stats.focus_streaks || {};
+            const achievements = stats.achievements || [];
+            const peerComparison = stats.peer_comparison || {};
+            
+            card.innerHTML = `
+                <h3>🎮 Gamification Stats</h3>
+                <div class="metric-label">Current Focus Streak</div>
+                <div class="metric-value" style="font-size: 1.5em;">${streaks.current_streak || 0} 🔥</div>
+                <div class="metric-detail">Longest: ${streaks.longest_streak || 0} days | Total: ${streaks.total_active_days || 0} active days</div>
+                
+                <div class="metric-label" style="margin-top: 15px;">Peer Comparison</div>
+                <div class="metric-value" style="font-size: 1.3em;">${peerComparison.focus_score_percentile ? (peerComparison.focus_score_percentile).toFixed(0) : 'N/A'}%</div>
+                <div class="metric-detail">${peerComparison.comparison_summary || 'No peer data available'}</div>
+                
+                <div class="metric-label" style="margin-top: 15px;">Achievements Unlocked</div>
+                <div style="margin: 10px 0;">
+                    ${achievements.map(achievement => 
+                        `<span class="achievement-badge" title="${achievement.description}">${achievement.name}</span>`
+                    ).join('')}
+                    ${achievements.length === 0 ? '<div class="metric-detail">No achievements yet</div>' : ''}
+                </div>
+            `;
+            
+            return card;
+        }
+
+        function createInsightsCard(insights) {
+            const card = document.createElement('div');
+            card.className = 'analytics-card';
+            card.style.borderLeftColor = '#17a2b8';
+            
+            card.innerHTML = `
+                <h3>💡 Personalized Insights</h3>
+                ${insights.map(insight => 
+                    `<div class="insight-item">${insight}</div>`
+                ).join('')}
+            `;
+            
+            return card;
+        }
+
+        function generateHeatmapCells(heatmap) {
+            const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+            const hours = [6, 12, 18]; // Sample hours for display
+            
+            return hours.map(hour => 
+                days.map((day, dayIndex) => {
+                    const cellData = heatmap.find(h => h.day_of_week === dayIndex && h.hour === hour);
+                    const score = cellData ? cellData.focus_score : 0;
+                    const intensity = score / 100;
+                    const color = `rgba(40, 167, 69, ${intensity})`;
+                    
+                    return `<div class="heatmap-cell" style="background: ${color}" title="${hour}:00 - Score: ${score.toFixed(1)}%">${hour}</div>`;
+                }).join('')
+            ).join('');
         }
 
         async function getActiveUsers() {
