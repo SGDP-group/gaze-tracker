@@ -2,7 +2,21 @@
 
 ## System Overview
 
-The Focus Management System uses a multi-layered approach to track user focus through real-time face detection, temporal analysis, and machine learning classification.
+The Focus Management System uses a multi-layered approach to track user focus through real-time face detection, temporal analysis, and machine learning classification. The system supports both **local processing** (webcam-based) and **API-based processing** (client-server model) for multi-user applications.
+
+### Architecture Options
+
+**1. Local Processing (Traditional)**
+- Webcam directly connected to main application
+- Real-time processing on client machine
+- Single-user focus tracking
+- Local ML model training
+
+**2. API-Based Processing (New!)**
+- Client sends frames to server via HTTP API
+- Server-side face detection and analysis
+- Multi-user session management
+- Centralized ML processing and storage
 
 ## Algorithm Flowchart
 
@@ -15,14 +29,14 @@ flowchart TD
     C -->|Yes| E[Extract Face Metrics]
     
     E --> F[Calculate Face Angle]
-    F --> G[Update Baseline Angle<br/>WMA: α=0.05]
+    F --> G[Update Baseline Angle<br/>WMA: alpha=0.05]
     G --> H[Calculate Angle Difference]
     
     H --> I{Angle Difference}
     
-    I -->|< 20°| J[State = FOCUSED]
-    I -->|20°-30°| K[State = FOCUSED<br/>Continue Monitoring]
-    I -->|> 30°| L[Start Distraction Timer]
+    I -->|< 20deg| J[State = FOCUSED]
+    I -->|20deg-30deg| K[State = FOCUSED<br/>Continue Monitoring]
+    I -->|> 30deg| L[Start Distraction Timer]
     
     L --> M{Timer > 2 seconds?}
     M -->|No| K
@@ -66,6 +80,39 @@ flowchart TD
     EE --> R
 ```
 
+### API-Based Processing Flowchart
+
+```mermaid
+flowchart TD
+    A[Client Application] --> B[Capture Frame]
+    B --> C[Encode to Base64]
+    C --> D[Send to API<br/>POST /focus/analyze]
+    
+    D --> E[API Server]
+    E --> F[Decode Frame]
+    F --> G[MediaPipe Face Detection]
+    G --> H{Face Detected?}
+    
+    H -->|No| I[State = AWAY]
+    H -->|Yes| J[Extract Face Metrics]
+    
+    J --> K[Calculate Face Angle]
+    K --> L[Update User Session]
+    L --> M[Update Baseline Angle<br/>WMA: alpha=0.05]
+    M --> N[Calculate Focus State]
+    
+    N --> O[Generate Response]
+    O --> P[Return JSON Response]
+    P --> Q[Client Updates UI]
+    
+    I --> L
+    Q --> R{Continue Session?}
+    R -->|Yes| B
+    R -->|No| S[End Session<br/>POST /focus/session/end]
+    S --> T[Final Session Data]
+    T --> U[Client Display Results]
+```
+
 ## Detailed Component Breakdown
 
 ### 1. Real-Time Face Detection
@@ -88,20 +135,20 @@ stateDiagram-v2
     FOCUSED --> AWAY: No face detected
     AWAY --> FOCUSED: Face detected
     
-    FOCUSED --> DISTRACTED: Angle > 30° for 2s
-    DISTRACTED --> FOCUSED: Angle < 20°
+    FOCUSED --> DISTRACTED: Angle > 30deg for 2s
+    DISTRACTED --> FOCUSED: Angle < 20deg
     
-    FOCUSED --> FOCUSED: Angle 20°-30°
-    DISTRACTED --> DISTRACTED: Angle > 30°
+    FOCUSED --> FOCUSED: Angle 20deg-30deg
+    DISTRACTED --> DISTRACTED: Angle > 30deg
 ```
 
 ### 3. Baseline Angle Calibration
 
 ```mermaid
-flowchart TD
+flowchart LR
     A[Current Angle] --> B[Weighted Moving Average]
-    B --> C[New Baseline = α*Current + (1-α)*Old]
-    C --> D[α = 0.05 (Slow Adaptation)]
+    B --> C[New Baseline = alpha*Current + (1-alpha)*Old]
+    C --> D[alpha = 0.05 (Slow Adaptation)]
     D --> E[Handles Natural Head Movement]
     E --> F[Reduces False Positives]
 ```
@@ -115,7 +162,7 @@ flowchart TD
     A --> D[Presence Ratio]
     A --> E[Context Switches]
     
-    B --> F[σ²(angles)]
+    B --> F[variance(angles)]
     C --> G[1 - CV(angle)]
     D --> H[frames_with_face / total_frames]
     E --> I[state_changes / time]
@@ -190,14 +237,14 @@ sequenceDiagram
 | Frame Rate | 30 FPS | Smooth video processing |
 | Detection Interval | Every frame | Real-time analysis |
 | WMA Alpha | 0.05 | Slow baseline adaptation |
-| Focus Threshold | 20° | Focused angle limit |
-| Distraction Threshold | 30° | Distraction trigger |
+| Focus Threshold | 20deg | Focused angle limit |
+| Distraction Threshold | 30deg | Distraction trigger |
 | Distraction Timer | 2.0 seconds | Confirmation delay |
 
 ### Session Analysis
 | Feature | Formula | Interpretation |
 |---------|---------|-------------|
-| Angle Variance | σ²(angles) | Movement consistency |
+| Angle Variance | variance(angles) | Movement consistency |
 | Stability Score | 1 - CV(angle) | Focus stability |
 | Presence Ratio | face_frames / total | Engagement level |
 | Context Switches | state_changes / time | Attention shifts |
@@ -219,16 +266,60 @@ stateDiagram-v2
     Initializing --> Calibrating: Camera Ready
     Calibrating --> Tracking: Baseline Set
     
-    Tracking --> Focused: |angle| < 20°
-    Tracking --> Distracted: |angle| > 30° for 2s
+    Tracking --> Focused: |angle| < 20deg
+    Tracking --> Distracted: |angle| > 30deg for 2s
     Tracking --> Away: No face detected
     
     Focused --> Tracking: Continuous monitoring
-    Distracted --> Tracking: |angle| < 20°
+    Distracted --> Tracking: |angle| < 20deg
     Away --> Tracking: Face detected
     
     Tracking --> SessionEnd: Duration complete
     SessionEnd --> [*]: Cleanup
+```
+
+### API Session Management
+
+```mermaid
+stateDiagram-v2
+    [*] --> SessionStart: POST /focus/session/start
+    SessionStart --> Active: Session Created
+    
+    Active --> FrameProcessing: POST /focus/analyze
+    FrameProcessing --> Active: Response Sent
+    
+    Active --> SessionEnd: POST /focus/session/end
+    SessionEnd --> [*]: Session Data Returned
+    
+    Active --> Cleanup: 30min Inactivity
+    Cleanup --> [*]: Session Removed
+```
+
+### Multi-User Session Isolation
+
+```mermaid
+flowchart TD
+    A[API Server] --> B[User Session Manager]
+    
+    B --> C[User A Session]
+    B --> D[User B Session]
+    B --> E[User C Session]
+    
+    C --> F[User A Baseline]
+    C --> G[User A Focus Buffer]
+    C --> H[User A Statistics]
+    
+    D --> I[User B Baseline]
+    D --> J[User B Focus Buffer]
+    D --> K[User B Statistics]
+    
+    E --> L[User C Baseline]
+    E --> M[User C Focus Buffer]
+    E --> N[User C Statistics]
+    
+    F --> O[Independent Processing]
+    I --> O
+    L --> O
 ```
 
 ### Error Handling

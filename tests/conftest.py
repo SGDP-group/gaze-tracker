@@ -14,7 +14,7 @@ from unittest.mock import Mock
 
 from src.database.database import get_db, Base
 from src.database.models import User, UserSession, UserFeedback, UserModel, TrainingTask
-from src.api.main import app
+from server import app
 from src.services.auth import generate_api_key
 
 

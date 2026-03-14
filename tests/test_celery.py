@@ -225,7 +225,7 @@ def main():
     print("Make sure:")
     print("1. Redis server is running on localhost:6379")
     print("2. Celery worker is running: uv run celery -A src.services.celery_app worker --loglevel=info")
-    print("3. API server is running: uv run python -m src.api.main")
+    print("3. API server is running: uv run server.py")
     print()
     
     input("Press Enter to start the test...")
