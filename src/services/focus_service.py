@@ -29,12 +29,12 @@ class ProductivityLevel(str, Enum):
     NOT_PRODUCTIVE = "NOT_PRODUCTIVE"
 
 class FocusTracker:
-    """Focus tracking service for API-based frame processing."""
+    """Focus tracking service for API-based frame processing (single user mode)."""
     
     def __init__(self):
         """Initialize the focus tracker with MediaPipe face detector."""
         self.face_detector = None
-        self.user_sessions = {}  # Track sessions per user
+        self.current_session = None  # Single session instead of user_sessions dict
         self._init_face_detector()
     
     def _init_face_detector(self):
@@ -218,7 +218,7 @@ class FocusTracker:
         Calibrate ground frame for gaze direction reference.
         
         Args:
-            user_id: Unique user identifier
+            user_id: Unique user identifier (for compatibility, not used in single-user mode)
             frame_data: Raw image bytes for ground frame
             image_shape: (height, width) of the image
             
@@ -237,17 +237,15 @@ class FocusTracker:
                 }
             
             # Initialize session if not exists
-            if user_id not in self.user_sessions:
-                self.update_user_session(user_id, None)  # Create empty session
-            
-            session = self.user_sessions[user_id]
+            if self.current_session is None:
+                self.current_session = self._create_empty_session(user_id)
             
             # Store ground frame reference
-            session["ground_frame_calibrated"] = True
-            session["reference_angle"] = face_metrics["angle"]
-            session["reference_magnitude"] = face_metrics["magnitude"]
-            session["gaze_deviations"] = []
-            session["gaze_consistency_buffer"] = []
+            self.current_session["ground_frame_calibrated"] = True
+            self.current_session["reference_angle"] = face_metrics["angle"]
+            self.current_session["reference_magnitude"] = face_metrics["magnitude"]
+            self.current_session["gaze_deviations"] = []
+            self.current_session["gaze_consistency_buffer"] = []
             
             return {
                 "success": True,
@@ -266,6 +264,34 @@ class FocusTracker:
                 "error": str(e),
                 "message": "Failed to calibrate ground frame"
             }
+    
+    def _create_empty_session(self, user_id: str) -> Dict:
+        """Create an empty session structure."""
+        return {
+            "user_id": user_id,
+            "baseline_angle": 0.0,
+            "focus_buffer": [],
+            "session_start": datetime.now().isoformat(),
+            "total_frames": 0,
+            "focused_frames": 0,
+            "distracted_frames": 0,
+            "away_frames": 0,
+            "current_state": "AWAY",
+            "distraction_start": None,
+            "last_update": datetime.now().isoformat(),
+            "frame_timestamps": [],
+            "fps_buffer": [],
+            "ground_frame_calibrated": False,
+            "reference_angle": None,
+            "reference_magnitude": None,
+            "gaze_deviations": [],
+            "gaze_consistency_buffer": [],
+            "interruptions": [],
+            "focus_streaks": [],
+            "current_focus_streak_start": None,
+            "session_states": [],
+            "completed": True
+        }
     
     def _calculate_gaze_consistency(self, session: Dict, current_angle: float) -> Dict:
         """
@@ -333,46 +359,20 @@ class FocusTracker:
     
     def update_user_session(self, user_id: str, face_metrics: Optional[Dict]) -> Dict:
         """
-        Update user's focus tracking session.
+        Update current focus tracking session.
         
         Args:
-            user_id: Unique user identifier
+            user_id: Unique user identifier (for compatibility, not used in single-user mode)
             face_metrics: Face metrics from current frame
             
         Returns:
             Current focus state and session data
         """
-        # Initialize user session if not exists
-        if user_id not in self.user_sessions:
-            self.user_sessions[user_id] = {
-                "user_id": user_id,
-                "baseline_angle": 0.0,
-                "focus_buffer": [],
-                "session_start": datetime.now().isoformat(),
-                "total_frames": 0,
-                "focused_frames": 0,
-                "distracted_frames": 0,
-                "away_frames": 0,
-                "current_state": "AWAY",
-                "distraction_start": None,
-                "last_update": datetime.now().isoformat(),
-                "frame_timestamps": [],  # Track frame timestamps for FPS calculation
-                "fps_buffer": [],  # Rolling FPS buffer
-                # Ground frame calibration data
-                "ground_frame_calibrated": False,
-                "reference_angle": None,
-                "reference_magnitude": None,
-                "gaze_deviations": [],  # Track deviations from reference angle
-                "gaze_consistency_buffer": [],  # Track gaze consistency over time
-                # Enhanced analytics tracking
-                "interruptions": [],  # Track interruption times
-                "focus_streaks": [],  # Track focus streak periods
-                "current_focus_streak_start": None,  # Track current streak start
-                "session_states": [],  # Detailed state tracking with timestamps
-                "completed": True  # Track if session was completed properly
-            }
+        # Initialize session if not exists
+        if self.current_session is None:
+            self.current_session = self._create_empty_session(user_id)
         
-        session = self.user_sessions[user_id]
+        session = self.current_session
         session["total_frames"] += 1
         current_time = datetime.now()
         session["last_update"] = current_time.isoformat()
@@ -524,11 +524,11 @@ class FocusTracker:
         }
     
     def get_user_session_data(self, user_id: str, historical_sessions: List[Dict] = None, all_users_data: List[Dict] = None) -> Optional[Dict]:
-        """Get complete session data for a user with comprehensive analytics."""
-        if user_id not in self.user_sessions:
+        """Get complete session data for the current session with comprehensive analytics."""
+        if self.current_session is None:
             return None
         
-        session = self.user_sessions[user_id]
+        session = self.current_session
         
         # Calculate final metrics with realistic variation and inconsistency penalties
         if session["focus_buffer"]:
@@ -576,7 +576,7 @@ class FocusTracker:
         
         # Prepare session data for analytics
         session_data_for_analytics = {
-            "user_id": user_id,
+            "user_id": session["user_id"],
             "session_start": session["session_start"],
             "session_end": session["last_update"],
             "total_frames": session["total_frames"],
@@ -604,7 +604,7 @@ class FocusTracker:
         # Generate comprehensive analytics
         try:
             comprehensive_analytics = analytics_service.generate_comprehensive_session_report(
-                user_id=user_id,
+                user_id=session["user_id"],
                 session_data=session_data_for_analytics,
                 historical_sessions=historical_sessions or [],
                 all_users_data=all_users_data or []
@@ -619,35 +619,32 @@ class FocusTracker:
         }
     
     def end_user_session(self, user_id: str) -> Optional[Dict]:
-        """End user session and return final data."""
+        """End current session and return final data."""
         session_data = self.get_user_session_data(user_id)
         
         if session_data:
-            # Remove from active sessions
-            del self.user_sessions[user_id]
+            # Clear current session
+            self.current_session = None
             logger.info(f"Ended session for user {user_id}")
         
         return session_data
     
     def get_active_users(self) -> List[str]:
         """Get list of currently active user IDs."""
-        return list(self.user_sessions.keys())
+        if self.current_session:
+            return [self.current_session["user_id"]]
+        return []
     
     def cleanup_inactive_sessions(self, timeout_minutes: int = 30):
         """Clean up inactive sessions."""
-        current_time = datetime.now()
-        inactive_users = []
-        
-        for user_id, session in self.user_sessions.items():
-            last_update = datetime.fromisoformat(session["last_update"])
-            inactive_duration = (current_time - last_update).total_seconds() / 60
+        if self.current_session:
+            last_update = datetime.fromisoformat(self.current_session["last_update"])
+            inactive_duration = (datetime.now() - last_update).total_seconds() / 60
             
             if inactive_duration > timeout_minutes:
-                inactive_users.append(user_id)
-        
-        for user_id in inactive_users:
-            self.end_user_session(user_id)
-            logger.info(f"Cleaned up inactive session for user {user_id}")
+                user_id = self.current_session["user_id"]
+                self.current_session = None
+                logger.info(f"Cleaned up inactive session for user {user_id}")
 
 
 # Global focus tracker instance

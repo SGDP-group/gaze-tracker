@@ -27,12 +27,12 @@ from src.models.schemas import (
 from src.models.focus_schemas import (
     FrameRequest, FocusResponse, SessionStartRequest, SessionResponse as FocusSessionResponse,
     SessionData, ActiveUsersResponse, ErrorResponse, HealthResponse,
-    GroundFrameRequest, GroundFrameResponse
+    GroundFrameRequest, GroundFrameResponse, BatchProcessRequest, BatchProcessResponse
 )
 from src.api.dependencies import get_current_user
 from src.services.auth import create_user, get_user_by_id
 from src.services.ml_service import PersonalizedMLService
-from src.services.tasks import train_user_model_async, get_task_status, get_user_training_history
+from src.services.tasks import train_user_model_async, get_task_status, get_user_training_history, process_session_frames_async
 from src.services.focus_service import focus_tracker
 
 # Initialize services
@@ -417,58 +417,6 @@ def health_check(db: Session = Depends(get_db)):
 
 # ==================== Focus Tracking Endpoints ====================
 
-@router.post("/focus/ground-frame/calibrate", response_model=GroundFrameResponse)
-def calibrate_ground_frame(frame_request: GroundFrameRequest):
-    """
-    Calibrate ground frame for gaze direction reference.
-    
-    Args:
-        frame_request: Ground frame data and user information
-        
-    Returns:
-        Calibration result with reference angle
-    """
-    try:
-        import base64
-        import io
-        
-        # Decode base64 frame data
-        frame_data = base64.b64decode(frame_request.frame_data.split(',')[1])
-        image_shape = (frame_request.image_height, frame_request.image_width)
-        
-        # Calibrate ground frame
-        calibration_result = focus_tracker.calibrate_ground_frame(
-            frame_request.user_id, frame_data, image_shape
-        )
-        
-        if calibration_result["success"]:
-            return GroundFrameResponse(
-                success=True,
-                user_id=calibration_result["user_id"],
-                reference_angle=calibration_result["reference_angle"],
-                reference_magnitude=calibration_result["reference_magnitude"],
-                confidence=calibration_result["confidence"],
-                message=calibration_result["message"],
-                timestamp=datetime.fromisoformat(calibration_result["timestamp"])
-            )
-        else:
-            return GroundFrameResponse(
-                success=False,
-                user_id=frame_request.user_id,
-                reference_angle=0.0,
-                reference_magnitude=0.0,
-                confidence=0.0,
-                message=calibration_result.get("message", "Calibration failed"),
-                timestamp=datetime.now()
-            )
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Ground frame calibration failed: {str(e)}"
-        )
-
-
 @router.post("/focus/analyze", response_model=FocusResponse)
 def analyze_focus_frame(frame_request: FrameRequest):
     """
@@ -571,104 +519,79 @@ def start_focus_session(session_request: SessionStartRequest):
         )
 
 
-@router.post("/focus/session/end", response_model=SessionData)
-def end_focus_session(user_id: str, db: Session = Depends(get_db)):
+@router.post("/focus/session/end", response_model=BatchProcessResponse)
+def end_focus_session(batch_request: BatchProcessRequest, db: Session = Depends(get_db)):
     """
-    End a focus tracking session and return final data with comprehensive analytics.
+    End a focus tracking session and trigger batch processing of all frames.
     
     Args:
-        user_id: User identifier
-        db: Database session for historical data
+        batch_request: Batch processing request with session details
+        db: Database session
+        
+    Returns:
+        Batch processing task response
+    """
+    try:
+        # Submit batch processing task
+        task = process_session_frames_async.delay(
+            user_id=batch_request.user_id,
+            session_id=batch_request.session_id,
+            frames_directory=batch_request.frames_directory,
+            session_start=batch_request.session_start.isoformat(),
+            ground_frame_calibrated=False,  # Will be auto-calibrated
+            reference_angle=None  # Will be auto-calibrated
+        )
+        
+        # Estimate frame count for response
+        import os
+        from pathlib import Path
+        frames_dir = Path(batch_request.frames_directory)
+        estimated_frames = len(list(frames_dir.glob('*.png'))) if frames_dir.exists() else None
+        
+        return BatchProcessResponse(
+            task_id=task.id,
+            status="PENDING",
+            message=f"Batch processing task submitted for session {batch_request.session_id}",
+            user_id=batch_request.user_id,
+            session_id=batch_request.session_id,
+            estimated_frames=estimated_frames,
+            timestamp=datetime.now()
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to submit batch processing task: {str(e)}"
+        )
+
+
+@router.get("/focus/session/{session_id}/result", response_model=SessionData)
+def get_batch_processing_result(session_id: str, db: Session = Depends(get_db)):
+    """
+    Get the result of batch processing for a completed session.
+    
+    Args:
+        session_id: Session identifier
+        db: Database session
         
     Returns:
         Complete session data with comprehensive analytics
     """
     try:
-        # Get historical sessions for enhanced analytics
-        historical_sessions = []
-        try:
-            from src.database.models import UserSession
-            sessions = db.query(UserSession).filter(
-                UserSession.user_id == user_id
-            ).order_by(UserSession.start_time.desc()).limit(50).all()
-            
-            for session in sessions:
-                historical_sessions.append({
-                    "session_start": session.start_time.isoformat(),
-                    "session_end": session.end_time.isoformat(),
-                    "total_frames": session.total_frames,
-                    "focused_frames": session.focused_frames,
-                    "distracted_frames": session.distracted_frames,
-                    "away_frames": session.away_frames,
-                    "focus_score": session.focus_score,
-                    "session_duration_seconds": session.duration_seconds,
-                    "completed": True
-                })
-        except Exception as e:
-            logger.warning(f"Could not fetch historical sessions: {e}")
+        # Get session from database
+        from src.database.models import UserSession
+        session = db.query(UserSession).filter(
+            UserSession.session_id == session_id
+        ).first()
         
-        # Get peer comparison data (limited to recent users)
-        all_users_data = []
-        try:
-            from src.database.models import UserSession as DBUserSession, User as DBUser
-            # Get recent sessions from multiple users for peer comparison
-            recent_sessions = db.query(DBUserSession).join(DBUser).order_by(DBUserSession.created_at.desc()).limit(500).all()
-            
-            users_sessions = defaultdict(list)
-            for session in recent_sessions:
-                users_sessions[session.user_id].append({
-                    "session_start": session.start_time.isoformat(),
-                    "focus_score": session.focus_score,
-                    "total_frames": session.total_frames,
-                    "focused_frames": session.focused_frames,
-                    "session_duration_seconds": session.duration_seconds
-                })
-            
-            for user_id, sessions in users_sessions.items():
-                if len(sessions) >= 3:  # Only include users with sufficient data
-                    all_users_data.append({
-                        "user_id": user_id,
-                        "sessions": sessions
-                    })
-        except Exception as e:
-            logger.warning(f"Could not fetch peer comparison data: {e}")
-        
-        # Get session data with comprehensive analytics
-        session_data = focus_tracker.get_user_session_data(
-            user_id=user_id,
-            historical_sessions=historical_sessions,
-            all_users_data=all_users_data
-        )
-        
-        if not session_data:
+        if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No active session found for user {user_id}"
+                detail=f"Session {session_id} not found"
             )
         
-        # Store session in database
-        try:
-            from src.database.models import UserSession as DBUserSession
-            import uuid
-            
-            db_session = DBUserSession(
-                user_id=user_id,
-                session_id=f"session_{uuid.uuid4().hex[:8]}",
-                start_time=datetime.fromisoformat(session_data["session_start"]),
-                end_time=datetime.fromisoformat(session_data["session_end"]),
-                duration_seconds=session_data["session_duration_seconds"],
-                total_frames=session_data["total_frames"],
-                focused_frames=session_data["focused_frames"],
-                distracted_frames=session_data["distracted_frames"],
-                away_frames=session_data["away_frames"],
-                focus_score=session_data["focus_score"],
-                baseline_angle=session_data["baseline_angle"],
-                raw_session_data=json.dumps(session_data)
-            )
-            db.add(db_session)
-            db.commit()
-        except Exception as e:
-            logger.error(f"Could not store session in database: {e}")
+        # Parse raw session data
+        session_data = json.loads(session.raw_session_data) if session.raw_session_data else {}
         
         # Convert comprehensive analytics to response format
         comprehensive_analytics = None
@@ -686,18 +609,18 @@ def end_focus_session(user_id: str, db: Session = Depends(get_db)):
                 logger.error(f"Error formatting comprehensive analytics: {e}")
         
         return SessionData(
-            user_id=session_data["user_id"],
-            session_start=datetime.fromisoformat(session_data["session_start"]),
-            session_end=datetime.fromisoformat(session_data["session_end"]),
-            total_frames=session_data["total_frames"],
-            focused_frames=session_data["focused_frames"],
-            distracted_frames=session_data["distracted_frames"],
-            away_frames=session_data["away_frames"],
-            focus_score=session_data["focus_score"],
-            baseline_angle=session_data["baseline_angle"],
+            user_id=session.user_id,
+            session_start=session.start_time,
+            session_end=session.end_time,
+            total_frames=session.total_frames,
+            focused_frames=session.focused_frames,
+            distracted_frames=session.distracted_frames,
+            away_frames=session.away_frames,
+            focus_score=session.focus_score,
+            baseline_angle=session.baseline_angle,
             average_fps=session_data.get("average_fps", 30.0),
             productivity_level=session_data.get("productivity_level", "MODERATELY_PRODUCTIVE"),
-            session_duration_seconds=session_data.get("session_duration_seconds", 0.0),
+            session_duration_seconds=session.duration_seconds,
             ground_frame_calibrated=session_data.get("ground_frame_calibrated", False),
             reference_angle=session_data.get("reference_angle"),
             gaze_consistency_score=session_data.get("gaze_consistency_score"),
@@ -710,7 +633,7 @@ def end_focus_session(user_id: str, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to end session: {str(e)}"
+            detail=f"Failed to get session result: {str(e)}"
         )
 
 
