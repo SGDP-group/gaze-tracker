@@ -17,6 +17,7 @@ import logging
 from pathlib import Path
 import re
 from enum import Enum
+import shutil
 
 logger = logging.getLogger(__name__)
 
@@ -277,6 +278,55 @@ class BatchFocusProcessor:
         else:
             return ProductivityLevel.NOT_PRODUCTIVE
     
+    def _cleanup_frames_directory(self, frames_directory: str) -> bool:
+        """
+        Clean up frames directory by deleting all frames and the directory itself.
+        
+        Args:
+            frames_directory: Path to the frames directory to clean up
+            
+        Returns:
+            True if cleanup was successful, False otherwise
+        """
+        try:
+            frames_dir = Path(frames_directory)
+            
+            if not frames_dir.exists():
+                logger.warning(f"Frames directory does not exist: {frames_directory}")
+                return True  # Consider it successful if directory is already gone
+            
+            # Count files before deletion for logging
+            frame_files = list(frames_dir.glob('*.png'))
+            file_count = len(frame_files)
+            
+            # Delete all frame files
+            for frame_file in frame_files:
+                try:
+                    frame_file.unlink()
+                except Exception as e:
+                    logger.error(f"Failed to delete frame file {frame_file}: {e}")
+            
+            # Delete the directory
+            try:
+                frames_dir.rmdir()  # rmdir only works if directory is empty
+                logger.info(f"Successfully cleaned up frames directory: {frames_directory} "
+                           f"(deleted {file_count} frame files)")
+                return True
+            except OSError as e:
+                # If directory is not empty, force delete
+                try:
+                    shutil.rmtree(frames_dir)
+                    logger.info(f"Force cleaned up frames directory: {frames_directory} "
+                               f"(deleted {file_count} frame files)")
+                    return True
+                except Exception as e:
+                    logger.error(f"Failed to force delete directory {frames_directory}: {e}")
+                    return False
+            
+        except Exception as e:
+            logger.error(f"Error during frames directory cleanup: {e}")
+            return False
+    
     def _auto_calibrate_with_first_frames(self, frame_files: List[Tuple[str, float]], user_id: str) -> Dict:
         """
         Auto-calibrate using frames from the first 10 seconds of the session.
@@ -510,12 +560,31 @@ class BatchFocusProcessor:
                 logger.error(f"Error generating comprehensive analytics: {e}")
                 session_data["comprehensive_analytics"] = None
             
+            # Clean up frames directory after processing
+            logger.info("Starting cleanup of frames directory")
+            cleanup_success = self._cleanup_frames_directory(frames_directory)
+            
+            if cleanup_success:
+                session_data["frames_cleanup_successful"] = True
+                session_data["frames_cleanup_status"] = "completed"
+                logger.info(f"Frames directory cleanup completed successfully")
+            else:
+                session_data["frames_cleanup_successful"] = False
+                session_data["frames_cleanup_status"] = "failed"
+                logger.warning(f"Frames directory cleanup failed - directory may need manual cleanup")
+            
             logger.info(f"Batch processing completed for session {session_id}")
             
             return session_data
             
         except Exception as e:
             logger.error(f"Batch processing failed for session {session_id}: {e}")
+            # Attempt cleanup even if processing failed
+            try:
+                self._cleanup_frames_directory(frames_directory)
+                logger.info(f"Cleanup attempted after processing failure")
+            except Exception as cleanup_error:
+                logger.error(f"Cleanup failed after processing error: {cleanup_error}")
             raise
     
     def _update_session_with_frame(self, session_data: Dict, face_metrics: Optional[Dict], frame_timestamp: float):
