@@ -10,6 +10,7 @@ import uvicorn
 
 from src.database.database import create_tables
 from src.api.routes import router
+from src.services.image_stream_server import image_stream_server
 
 
 @asynccontextmanager
@@ -18,10 +19,16 @@ async def lifespan(app: FastAPI):
     try:
         create_tables()
         print("Database initialized successfully")
+        image_stream_server.start()
+        print("Image stream server started")
     except Exception as e:
         print(f"Failed to initialize database: {e}")
     yield
-    # Cleanup code here if needed
+    try:
+        image_stream_server.stop()
+        print("Image stream server stopped")
+    except Exception as e:
+        print(f"Failed to stop image stream server: {e}")
 
 # Create FastAPI app
 app = FastAPI(
