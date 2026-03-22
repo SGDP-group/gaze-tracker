@@ -132,6 +132,8 @@ class ImageStreamServer:
                 self._active_clients += 1
                 self._total_clients += 1
 
+            logger.info("image-stream client connected: %s:%d", addr[0], addr[1])
+
             worker = threading.Thread(
                 target=self._client_loop,
                 args=(conn, addr),
@@ -142,6 +144,7 @@ class ImageStreamServer:
 
     def _client_loop(self, conn: socket.socket, addr: tuple[str, int]) -> None:
         conn.settimeout(2.0)
+        saved_for_client = 0
         try:
             while True:
                 frame_header = self._recv_exact(conn, FRAME_HEADER.size)
@@ -181,6 +184,10 @@ class ImageStreamServer:
                     with self._lock:
                         self._frames_saved += 1
                         self._bytes_saved += len(payload)
+                    saved_for_client += 1
+
+                    if saved_for_client == 1:
+                        logger.info("image-stream first frame saved from %s:%d", addr[0], addr[1])
                 except Exception as exc:
                     self._mark_drop(f"save failed from {addr}: {exc}")
         finally:
@@ -190,6 +197,7 @@ class ImageStreamServer:
                 pass
             with self._lock:
                 self._active_clients = max(0, self._active_clients - 1)
+            logger.info("image-stream client disconnected: %s:%d (saved=%d)", addr[0], addr[1], saved_for_client)
 
     def _recv_exact(self, conn: socket.socket, size: int) -> bytes | None:
         data = bytearray()
