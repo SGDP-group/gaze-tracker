@@ -1,26 +1,139 @@
 version: '3.8'
 
 services:
+  # Redis for Celery broker and backend
   redis:
     image: redis:7-alpine
-    container_name: focus_tracker_redis
+    container_name: gaze_tracker_redis
+    restart: unless-stopped
     ports:
       - "6380:6379"
     volumes:
       - redis_data:/data
-    restart: unless-stopped
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --port 6379
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
+    networks:
+      - gaze_tracker_network
+
+  # Main API server
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gaze_tracker_api
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=production
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./model:/app/model
+      - batch_worker_pids:/app/.celery_pids
+      - temp_frames:/tmp/test_session_frames
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - gaze_tracker_network
+
+  # Celery Batch Worker 1
+  batch_worker_1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gaze_tracker_batch_worker_1
+    restart: unless-stopped
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=production
+      - WORKER_NAME=batch_worker_1
+      - WORKER_CONCURRENCY=1
+    volumes:
+      - ./logs:/app/logs
+      - ./model:/app/model
+      - batch_worker_pids:/app/.celery_pids
+      - temp_frames:/tmp/test_session_frames
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    command: uv run celery -A src.services.batch_worker worker --loglevel=INFO --queues=batch_processing --concurrency=1 --hostname=batch_worker_1 --logfile=/app/logs/batch_worker_1.log --pidfile=/app/.celery_pids/batch_worker_1.pid
+    networks:
+      - gaze_tracker_network
+
+  # Celery Batch Worker 2
+  batch_worker_2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gaze_tracker_batch_worker_2
+    restart: unless-stopped
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=production
+      - WORKER_NAME=batch_worker_2
+      - WORKER_CONCURRENCY=1
+    volumes:
+      - ./logs:/app/logs
+      - ./model:/app/model
+      - batch_worker_pids:/app/.celery_pids
+      - temp_frames:/tmp/test_session_frames
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    command: uv run celery -A src.services.batch_worker worker --loglevel=INFO --queues=batch_processing --concurrency=1 --hostname=batch_worker_2 --logfile=/app/logs/batch_worker_2.log --pidfile=/app/.celery_pids/batch_worker_2.pid
+    networks:
+      - gaze_tracker_network
+
+  # Celery Flower for monitoring (optional)
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gaze_tracker_flower
+    restart: unless-stopped
+    ports:
+      - "5555:5555"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: uv run celery -A src.services.celery_app flower --port=5555 --broker=redis://redis:6379/0 --basic_auth=admin:flower_password_123
+    networks:
+      - gaze_tracker_network
 
   # Optional: Redis Commander for GUI management
   redis-commander:
     image: rediscommander/redis-commander:latest
-    container_name: focus_tracker_redis_commander
+    container_name: gaze_tracker_redis_commander
     ports:
       - "8081:8081"
     environment:
@@ -28,11 +141,35 @@ services:
     depends_on:
       - redis
     restart: unless-stopped
+    networks:
+      - gaze_tracker_network
+
+  # Nginx reverse proxy (optional, for production)
+  nginx:
+    image: nginx:alpine
+    container_name: gaze_tracker_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - api
+    networks:
+      - gaze_tracker_network
+    profiles:
+      - production
 
 volumes:
   redis_data:
     driver: local
+  batch_worker_pids:
+    driver: local
+  temp_frames:
+    driver: local
 
 networks:
-  default:
-    name: focus_tracker_network
+  gaze_tracker_network:
+    driver: bridge
