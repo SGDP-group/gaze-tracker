@@ -152,3 +152,20 @@ class HealthResponse(BaseModel):
     active_sessions: int = Field(..., description="Number of active sessions")
     service_version: str = Field(..., description="Service version")
     timestamp: datetime = Field(..., description="Health check timestamp")
+
+class BatchProcessRequest(BaseModel):
+    """Request model for batch processing session frames."""
+    user_id: str = Field(..., description="User identifier")
+    session_id: str = Field(..., description="Session identifier")
+    frames_directory: str = Field(..., description="Directory path containing session frames")
+    session_start: datetime = Field(..., description="Session start time")
+
+class BatchProcessResponse(BaseModel):
+    """Response model for batch processing initiation."""
+    task_id: str = Field(..., description="Celery task ID for batch processing")
+    status: str = Field(..., description="Processing status")
+    message: str = Field(..., description="Status message")
+    user_id: str = Field(..., description="User identifier")
+    session_id: str = Field(..., description="Session identifier")
+    estimated_frames: Optional[int] = Field(None, description="Estimated number of frames to process")
+    timestamp: datetime = Field(..., description="Response timestamp")

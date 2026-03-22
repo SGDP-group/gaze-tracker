@@ -1,18 +1,27 @@
 """
-Celery tasks for asynchronous model training and processing.
+Celery tasks for asynchronous operations.
+
+This module defines various Celery tasks for:
+- ML model training and recommendations
+- Batch processing of focus tracking sessions
+- Data cleanup and maintenance operations
 """
 
-import json
-import time
-from datetime import datetime
-from typing import Dict, Any, Optional
-from celery import current_task
+import logging
+from datetime import datetime, timedelta
+from typing import Dict, Any, Optional, List
+from celery import Celery
+from sqlalchemy.orm import Session
+from sqlalchemy import desc, func
 
-from src.services.celery_app import celery_app
-from src.services.ml_service import PersonalizedMLService
 from src.database.database import SessionLocal
-from src.database.models import UserModel, TrainingTask
+from src.database.models import UserSession, User
+from src.services.ml_service import PersonalizedMLService
+from src.services.batch_service import BatchFocusProcessor
+from src.config import config
+from src.services.celery_app import celery_app
 
+logger = logging.getLogger(__name__)
 
 @celery_app.task(bind=True)
 def train_user_model_async(self, user_id: str, force_retrain: bool = False) -> Dict[str, Any]:
@@ -269,6 +278,200 @@ def cleanup_old_tasks():
         return {
             'status': 'FAILED',
             'error': str(e)
+        }
+        
+    finally:
+        db.close()
+
+
+@celery_app.task(bind=True, queue='batch_processing')
+def process_session_frames_async(
+    self, 
+    user_id: str, 
+    session_id: str,
+    frames_directory: str,
+    session_start: str,
+    ground_frame_calibrated: bool = False,
+    reference_angle: Optional[float] = None
+) -> Dict[str, Any]:
+    """
+    Asynchronous task for batch processing all frames in a session directory.
+    
+    Args:
+        user_id: User identifier
+        session_id: Session identifier
+        frames_directory: Directory path containing session frames
+        session_start: Session start time (ISO string)
+        ground_frame_calibrated: Whether ground frame was calibrated
+        reference_angle: Reference angle from ground frame calibration
+    
+    Returns:
+        Batch processing result with session analytics
+    """
+    task_id = self.request.id
+    
+    # Update task status
+    self.update_state(
+        state='PROGRESS',
+        meta={'status': 'Starting batch processing...', 'progress': 0}
+    )
+    
+    # Resource monitoring
+    import psutil
+    import threading
+    
+    def monitor_resources():
+        """Monitor system resources during batch processing."""
+        while True:
+            cpu_percent = psutil.cpu_percent(interval=1)
+            memory_info = psutil.virtual_memory()
+            disk_info = psutil.disk_usage('/')
+            
+            resource_info = {
+                'cpu_percent': cpu_percent,
+                'memory_percent': memory_info.percent,
+                'memory_available_gb': memory_info.available / (1024**3),
+                'disk_free_gb': disk_info.free / (1024**3)
+            }
+            
+            try:
+                self.update_state(
+                    state='PROGRESS',
+                    meta={
+                        'status': 'Processing frames...',
+                        'progress': 'processing',
+                        'resources': resource_info
+                    }
+                )
+            except:
+                break  # Task may have completed
+            
+            threading.Event().wait(10)  # Update every 10 seconds
+    
+    # Start resource monitoring in background
+    monitor_thread = threading.Thread(target=monitor_resources, daemon=True)
+    monitor_thread.start()
+    
+    db = SessionLocal()
+    
+    try:
+        # Parse session start time
+        session_start_dt = datetime.fromisoformat(session_start)
+        
+        # Update progress - initializing
+        self.update_state(
+            state='PROGRESS',
+            meta={'status': 'Initializing batch processor...', 'progress': 5}
+        )
+        
+        # Get frame count for progress estimation
+        import os
+        from pathlib import Path
+        
+        frames_dir = Path(frames_directory)
+        frame_count = len(list(frames_dir.glob('*.png'))) if frames_dir.exists() else 0
+        
+        if frame_count == 0:
+            return {
+                'status': 'FAILED',
+                'message': f'No frames found in directory: {frames_directory}',
+                'task_id': task_id,
+                'user_id': user_id,
+                'session_id': session_id
+            }
+        
+        # Update progress - starting processing
+        self.update_state(
+            state='PROGRESS',
+            meta={'status': f'Processing {frame_count} frames...', 'progress': 10}
+        )
+        
+        # Initialize batch processor
+        batch_processor = BatchFocusProcessor()
+        
+        # Process all frames using batch processor
+        session_result = batch_processor.process_session_frames(
+            user_id=user_id,
+            session_id=session_id,
+            frames_directory=frames_directory,
+            session_start=session_start_dt,
+            ground_frame_calibrated=ground_frame_calibrated,
+            reference_angle=reference_angle
+        )
+        
+        # Update progress - storing results
+        self.update_state(
+            state='PROGRESS',
+            meta={'status': 'Storing session results...', 'progress': 90}
+        )
+        
+        # Store session in database
+        try:
+            import uuid
+            
+            db_session = UserSession(
+                user_id=user_id,
+                session_id=session_id,
+                start_time=session_start_dt,
+                end_time=datetime.fromisoformat(session_result["session_end"]),
+                duration_seconds=session_result.get("session_duration_seconds", 0.0),
+                total_frames=session_result["total_frames"],
+                focused_frames=session_result["focused_frames"],
+                distracted_frames=session_result["distracted_frames"],
+                away_frames=session_result["away_frames"],
+                focus_score=session_result["focus_score"],
+                baseline_angle=session_result["baseline_angle"],
+                raw_session_data=json.dumps(session_result)
+            )
+            db.add(db_session)
+            db.commit()
+            
+            logger.info(f"Stored batch processed session {session_id} in database")
+            
+        except Exception as e:
+            logger.error(f"Failed to store session in database: {e}")
+            # Don't fail the task, but log the error
+        
+        # Final progress update
+        self.update_state(
+            state='SUCCESS',
+            meta={
+                'status': 'Batch processing completed successfully',
+                'progress': 100,
+                'result': session_result
+            }
+        )
+        
+        return {
+            'status': 'SUCCESS',
+            'message': 'Session frames processed successfully',
+            'task_id': task_id,
+            'user_id': user_id,
+            'session_id': session_id,
+            'result': session_result
+        }
+        
+    except Exception as e:
+        error_message = str(e)
+        logger.error(f"Batch processing task failed: {error_message}")
+        
+        # Update Celery task state
+        self.update_state(
+            state='FAILURE',
+            meta={
+                'status': 'Batch processing failed',
+                'error': error_message,
+                'progress': 0
+            }
+        )
+        
+        return {
+            'status': 'FAILED',
+            'message': 'Batch processing failed',
+            'error': error_message,
+            'task_id': task_id,
+            'user_id': user_id,
+            'session_id': session_id
         }
         
     finally:
