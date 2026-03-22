@@ -326,6 +326,39 @@
             box-shadow: 0 5px 15px rgba(23,162,184,0.3);
         }
 
+        .btn-secondary {
+            background: linear-gradient(135deg, #6c757d, #5a6268);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(108,117,125,0.3);
+        }
+
+        .batch-status {
+            background: linear-gradient(135deg, #e9ecef, #dee2e6);
+            border-left: 4px solid #17a2b8;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .batch-status.processing {
+            border-left-color: #ffc107;
+            background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+        }
+
+        .batch-status.completed {
+            border-left-color: #28a745;
+            background: linear-gradient(135deg, #d4edda, #c3e6cb);
+        }
+
+        .batch-status.failed {
+            border-left-color: #dc3545;
+            background: linear-gradient(135deg, #f8d7da, #f5c6cb);
+        }
+
         .video-section {
             grid-column: 1 / -1;
         }
@@ -473,7 +506,8 @@
     <div class="container">
         <div class="header">
             <h1>🎯 Focus Management System</h1>
-            <p>Web Demo Client for API Testing</p>
+            <p>Web Demo Client with Batch Processing Support</p>
+            <p style="font-size: 0.9em; opacity: 0.8; margin-top: 10px;">✨ Auto-Calibration | 🚀 Async Batch Processing | 🧹 Automatic Cleanup</p>
         </div>
 
         <div class="main-content">
@@ -494,13 +528,13 @@
                 </div>
                 <div class="form-group">
                     <label>
-                        <input type="checkbox" id="groundFrameCalibrated">
-                        Ground Frame Calibrated
+                        <input type="checkbox" id="autoCalibration">
+                        Auto-Calibration (First 10 seconds)
                     </label>
                 </div>
                 <button class="btn btn-primary" onclick="updateConfig()">Update Configuration</button>
-                <button class="btn btn-secondary" onclick="testCalibrateFunction()">Test Calibrate Function</button>
-                <button class="btn btn-secondary" onclick="calibrateGroundFrame()">Calibrate Ground Frame</button>
+                <button class="btn btn-info" onclick="checkBatchWorkers()">Check Batch Workers</button>
+                <button class="btn btn-warning" onclick="testBatchProcessing()">Test Batch Processing</button>
             </div>
 
             <!-- Focus Service Section -->
@@ -510,7 +544,7 @@
                     <button class="btn btn-success" onclick="startFocusSession()">Start Session</button>
                     <button class="btn btn-primary" onclick="sendTestFrame()">Send Test Frame</button>
                     <button class="btn btn-info" onclick="getSessionData()">Get Session Data</button>
-                    <button class="btn btn-warning" onclick="endFocusSession()">End Session</button>
+                    <button class="btn btn-warning" onclick="endFocusSession()">End Session (Batch)</button>
                     <button class="btn btn-info" onclick="getActiveUsers()">Active Users</button>
                     <button class="btn btn-danger" onclick="cleanupSessions()">Cleanup Sessions</button>
                     <button class="btn btn-secondary" onclick="showAnalyticsFromSession()">Show Analytics</button>
@@ -789,21 +823,109 @@
         }
 
         async function endFocusSession() {
+            updateStatus('Ending session and starting batch processing...');
+            
             const result = await makeApiRequest('POST', '/focus/session/end', null, { user_id: userId });
             
             if (result.success) {
                 sessionId = null;
-                updateStatus(`Session ended: Final score ${result.data.focus_score.toFixed(1)}%`);
-                logResponse('End Session', result.data);
                 
-                // Show comprehensive analytics if available
-                if (result.data.comprehensive_analytics) {
-                    showAnalytics(result.data.comprehensive_analytics);
+                if (result.data.task_id) {
+                    // Batch processing initiated
+                    updateStatus(`Batch processing started: Task ${result.data.task_id}`);
+                    logResponse('Session Ended - Batch Processing Started', {
+                        message: 'Session ended successfully, batch processing initiated',
+                        task_id: result.data.task_id,
+                        user_id: result.data.user_id,
+                        session_id: result.data.session_id
+                    });
+                    
+                    // Start polling for batch processing results
+                    pollBatchResults(result.data.task_id);
+                } else {
+                    // Legacy sync processing (fallback)
+                    updateStatus(`Session ended: Final score ${result.data.focus_score.toFixed(1)}%`);
+                    logResponse('End Session (Legacy)', result.data);
+                    
+                    if (result.data.comprehensive_analytics) {
+                        showAnalytics(result.data.comprehensive_analytics);
+                    }
                 }
             } else {
                 updateStatus('Failed to end session');
                 logResponse('End Session Error', result);
             }
+        }
+
+        async function pollBatchResults(taskId, maxAttempts = 60) {
+            let attempts = 0;
+            
+            const poll = async () => {
+                attempts++;
+                
+                try {
+                    const result = await makeApiRequest('GET', `/focus/session/batch-result/${taskId}`);
+                    
+                    if (result.success) {
+                        const data = result.data;
+                        
+                        if (data.status === 'completed') {
+                            updateStatus(`Batch processing completed: Score ${data.focus_score?.toFixed(1) || 'N/A'}%`);
+                            logResponse('Batch Processing Completed', data);
+                            
+                            // Show analytics if available
+                            if (data.comprehensive_analytics) {
+                                showAnalytics(data.comprehensive_analytics);
+                            }
+                            
+                            // Show calibration results
+                            if (data.calibration_result) {
+                                logResponse('Auto-Calibration Results', data.calibration_result);
+                            }
+                            
+                            // Show cleanup status
+                            if (data.frames_cleanup_status) {
+                                logResponse('Frame Cleanup Status', {
+                                    status: data.frames_cleanup_status,
+                                    message: `Frames ${data.frames_cleanup_status === 'completed' ? 'cleaned up successfully' : 'cleanup failed'}`
+                                });
+                            }
+                        } else if (data.status === 'failed') {
+                            updateStatus('Batch processing failed');
+                            logResponse('Batch Processing Failed', data);
+                        } else if (data.status === 'processing' && attempts < maxAttempts) {
+                            // Still processing, continue polling
+                            updateStatus(`Batch processing... (${attempts}/${maxAttempts})`);
+                            setTimeout(poll, 2000); // Poll every 2 seconds
+                        } else {
+                            updateStatus('Batch processing timeout');
+                            logResponse('Batch Processing Timeout', {
+                                task_id: taskId,
+                                attempts: attempts,
+                                last_status: data.status
+                            });
+                        }
+                    } else {
+                        // Error polling results
+                        if (attempts < maxAttempts) {
+                            setTimeout(poll, 2000);
+                        } else {
+                            updateStatus('Batch result polling failed');
+                            logResponse('Batch Result Polling Error', result);
+                        }
+                    }
+                } catch (error) {
+                    if (attempts < maxAttempts) {
+                        setTimeout(poll, 2000);
+                    } else {
+                        updateStatus('Batch result polling error');
+                        logResponse('Batch Result Polling Error', { error: error.message });
+                    }
+                }
+            };
+            
+            // Start polling
+            setTimeout(poll, 1000); // Wait 1 second before first poll
         }
 
         // Analytics functions
@@ -1035,85 +1157,109 @@
             }
         }
 
-        function testCalibrateFunction() {
-            console.log('Test function called - button is working!');
-            alert('Calibrate function test - button is working!');
-        }
-
-        async function calibrateGroundFrame() {
-            console.log('Calibrate Ground Frame button clicked'); // Debug log
-            
-            const userId = document.getElementById('userId').value;
-            console.log('User ID:', userId); // Debug log
-            
-            if (!userId) {
-                logResponse('Error', 'Please enter a User ID');
-                return;
-            }
+        // Batch processing functions
+        async function checkBatchWorkers() {
+            updateStatus('Checking batch worker status...');
             
             try {
-                // Check if camera is started
-                const video = document.getElementById('videoElement');
-                const canvas = document.getElementById('canvasElement');
-                
-                console.log('Video element:', video); // Debug log
-                console.log('Canvas element:', canvas); // Debug log
-                
-                if (!video || !canvas) {
-                    logResponse('Error', 'Camera or canvas element not found');
-                    return;
-                }
-                
-                console.log('Video ready state:', video.readyState); // Debug log
-                
-                const context = canvas.getContext('2d');
-                if (!context) {
-                    logResponse('Error', 'Cannot get canvas context');
-                    return;
-                }
-                
-                if (video.readyState !== video.HAVE_ENOUGH_DATA) {
-                    logResponse('Error', 'Camera not ready. Please start the camera first.');
-                    return;
-                }
-                
-                // Set canvas dimensions
-                canvas.width = video.videoWidth || 640;
-                canvas.height = video.videoHeight || 480;
-                
-                console.log('Canvas dimensions:', canvas.width, 'x', canvas.height); // Debug log
-                
-                // Capture current frame
-                context.drawImage(video, 0, 0, canvas.width, canvas.height);
-                const frameData = canvas.toDataURL('image/jpeg', 0.8);
-                
-                console.log('Frame data length:', frameData.length); // Debug log
-                
-                const data = {
-                    user_id: userId,
-                    frame_data: frameData,
-                    image_width: canvas.width,
-                    image_height: canvas.height
-                };
-                
-                console.log('Sending calibration request...'); // Debug log
-                
-                const result = await makeApiRequest('POST', '/focus/ground-frame/calibrate', data);
-                
-                console.log('Calibration result:', result); // Debug log
+                // Check Redis and worker status
+                const result = await makeApiRequest('GET', '/focus/batch-workers/status');
                 
                 if (result.success) {
-                    logResponse('Ground Frame Calibration', result.data);
-                    document.getElementById('groundFrameCalibrated').checked = true;
-                    updateStatus('Ground frame calibrated successfully');
+                    updateStatus(`Batch workers: ${result.data.active_workers} active`);
+                    logResponse('Batch Workers Status', result.data);
                 } else {
-                    logResponse('Ground Frame Calibration Error', result);
-                    updateStatus('Ground frame calibration failed');
+                    // Fallback: try to get general health
+                    const healthResult = await makeApiRequest('GET', '/focus/health');
+                    if (healthResult.success) {
+                        updateStatus('Batch workers status: API healthy (no direct status endpoint)');
+                        logResponse('Batch Workers Status (Indirect)', {
+                            message: 'API is healthy, batch workers likely running',
+                            api_health: healthResult.data
+                        });
+                    } else {
+                        updateStatus('Cannot check batch worker status');
+                        logResponse('Batch Workers Status Error', healthResult);
+                    }
                 }
             } catch (error) {
-                console.error('Calibration error:', error); // Debug log
-                logResponse('Error', `Ground frame calibration failed: ${error.message}`);
+                updateStatus('Error checking batch workers');
+                logResponse('Batch Workers Check Error', { error: error.message });
             }
+        }
+
+        async function testBatchProcessing() {
+            updateStatus('Testing batch processing with sample frames...');
+            
+            try {
+                // Create test frames
+                const testFrames = [];
+                for (let i = 0; i < 5; i++) {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 320;
+                    canvas.height = 240;
+                    const ctx = canvas.getContext('2d');
+
+                    // Draw background
+                    ctx.fillStyle = '#87CEEB';
+                    ctx.fillRect(0, 0, 320, 240);
+
+                    // Draw face-like shape with slight variation
+                    ctx.fillStyle = '#FDBCB4';
+                    ctx.beginPath();
+                    ctx.ellipse(160 + Math.sin(i) * 10, 120, 60, 40, 0, 0, 2 * Math.PI);
+                    ctx.fill();
+
+                    // Draw eyes
+                    ctx.fillStyle = '#000';
+                    ctx.beginPath();
+                    ctx.ellipse(140, 110, 8, 12, 0, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.ellipse(180, 110, 8, 12, 0, 0, 2 * Math.PI);
+                    ctx.fill();
+
+                    // Draw mouth
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(160, 130, 20, 0, Math.PI);
+                    ctx.stroke();
+
+                    testFrames.push(canvas.toDataURL('image/jpeg'));
+                }
+
+                // Submit batch processing request
+                const data = {
+                    user_id: `${userId}_batch_test`,
+                    session_id: `batch_test_${Date.now()}`,
+                    frames: testFrames,
+                    session_start: new Date().toISOString()
+                };
+
+                const result = await makeApiRequest('POST', '/focus/batch-process', data);
+                
+                if (result.success) {
+                    updateStatus(`Batch test submitted: ${result.data.task_id}`);
+                    logResponse('Batch Processing Test Started', result.data);
+                    
+                    // Poll for results
+                    if (result.data.task_id) {
+                        pollBatchResults(result.data.task_id);
+                    }
+                } else {
+                    updateStatus('Batch processing test failed');
+                    logResponse('Batch Processing Test Error', result);
+                }
+            } catch (error) {
+                updateStatus('Error in batch processing test');
+                logResponse('Batch Processing Test Error', { error: error.message });
+            }
+        }
+
+        function testCalibrateFunction() {
+            console.log('Test function called - button is working!');
+            alert('Auto-calibration is now handled automatically during batch processing!');
         }
 
         // Other API functions
@@ -1303,16 +1449,13 @@
                     <p><strong>Average FPS:</strong> ${data.average_fps.toFixed(1)}</p>
             `;
 
-            // Add ground frame metrics if calibrated
-            if (data.session_stats.ground_frame_calibrated) {
+            // Add auto-calibration metrics if available
+            if (data.calibration_result) {
                 html += `
-                    <p><strong>🎯 Ground Frame:</strong> <span style="color: #28a745">Calibrated</span></p>
-                    <p><strong>Gaze Consistency:</strong> ${data.session_stats.gaze_consistency_score ? data.session_stats.gaze_consistency_score.toFixed(1) + '%' : 'N/A'}</p>
-                    <p><strong>Gaze Deviation:</strong> ${data.session_stats.gaze_deviation ? data.session_stats.gaze_deviation.toFixed(1) + '°' : 'N/A'}</p>
-                    <p><strong>Is Consistent:</strong> ${data.session_stats.is_consistent !== null ? (data.session_stats.is_consistent ? '<span style="color: #28a745">✅ Yes</span>' : '<span style="color: #dc3545">❌ No</span>') : 'N/A'}</p>
+                    <p><strong>🔧 Auto-Calibration:</strong> <span style="color: #28a745">${data.calibration_result.calibration_method || 'First 10 seconds'}</span></p>
+                    <p><strong>Calibration Frames:</strong> ${data.calibration_result.calibration_frames_used || 'N/A'}</p>
+                    <p><strong>Reference Angle:</strong> ${data.calibration_result.reference_angle ? data.calibration_result.reference_angle.toFixed(1) + '°' : 'N/A'}</p>
                 `;
-            } else {
-                html += `<p><strong>🎯 Ground Frame:</strong> <span style="color: #6c757d">Not calibrated</span></p>`;
             }
 
             if (data.face_metrics) {

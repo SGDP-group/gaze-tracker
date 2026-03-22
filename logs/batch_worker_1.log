@@ -1,0 +1,176 @@
+[2026-03-22 05:45:42,521: INFO/MainProcess] Connected to redis://localhost:6380/0
+[2026-03-22 05:45:42,523: INFO/MainProcess] mingle: searching for neighbors
+[2026-03-22 05:45:43,530: INFO/MainProcess] mingle: all alone
+[2026-03-22 05:45:43,551: INFO/MainProcess] celery@batch_worker_1 ready.
+[2026-03-22 05:46:02,460: INFO/MainProcess] Task src.services.tasks.process_session_frames_async[f087aa1e-a8a4-4438-946e-69e563f59230] received
+[2026-03-22 05:46:02,472: INFO/MainProcess] Face detector initialized successfully for batch processing
+[2026-03-22 05:46:02,472: INFO/MainProcess] Found 0 frame files in /tmp/test_session_frames
+[2026-03-22 05:46:02,473: ERROR/MainProcess] Batch processing failed for session demo_session: No valid frame files found in /tmp/test_session_frames
+[2026-03-22 05:46:02,473: INFO/MainProcess] Successfully cleaned up frames directory: /tmp/test_session_frames (deleted 8 frame files)
+[2026-03-22 05:46:02,473: INFO/MainProcess] Cleanup attempted after processing failure
+[2026-03-22 05:46:02,473: ERROR/MainProcess] Batch processing task failed: No valid frame files found in /tmp/test_session_frames
+[2026-03-22 05:46:02,479: WARNING/MainProcess] /home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/app/trace.py:705: RuntimeWarning: Exception raised outside body: ValueError('Exception information must include the exception type'):
+Traceback (most recent call last):
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 453, in exception_to_python
+    exc_type = exc['exc_type']
+               ~~~^^^^^^^^^^^^
+KeyError: 'exc_type'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/app/trace.py", line 550, in trace_task
+    task.backend.mark_as_done(
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 184, in mark_as_done
+    self.store_result(task_id, result, state, request=request)
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 625, in store_result
+    self._store_result(task_id, result, state, traceback,
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 1074, in _store_result
+    current_meta = self._get_task_meta_for(task_id)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 1099, in _get_task_meta_for
+    return self.decode_result(meta)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 524, in decode_result
+    return self.meta_from_decoded(self.decode(payload))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 520, in meta_from_decoded
+    meta['result'] = self.exception_to_python(meta['result'])
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 455, in exception_to_python
+    raise ValueError("Exception information must include "
+ValueError: Exception information must include the exception type
+
+  warn(RuntimeWarning(
+
+[2026-03-22 05:46:02,480: CRITICAL/MainProcess] Unrecoverable error: ValueError('Exception information must include the exception type')
+Traceback (most recent call last):
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 453, in exception_to_python
+    exc_type = exc['exc_type']
+               ~~~^^^^^^^^^^^^
+KeyError: 'exc_type'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/app/trace.py", line 550, in trace_task
+    task.backend.mark_as_done(
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 184, in mark_as_done
+    self.store_result(task_id, result, state, request=request)
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 625, in store_result
+    self._store_result(task_id, result, state, traceback,
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 1074, in _store_result
+    current_meta = self._get_task_meta_for(task_id)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 1099, in _get_task_meta_for
+    return self.decode_result(meta)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 524, in decode_result
+    return self.meta_from_decoded(self.decode(payload))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 520, in meta_from_decoded
+    meta['result'] = self.exception_to_python(meta['result'])
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 455, in exception_to_python
+    raise ValueError("Exception information must include "
+ValueError: Exception information must include the exception type
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 453, in exception_to_python
+    exc_type = exc['exc_type']
+               ~~~^^^^^^^^^^^^
+KeyError: 'exc_type'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/worker/worker.py", line 203, in start
+    self.blueprint.start(self)
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/bootsteps.py", line 116, in start
+    step.start(parent)
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/bootsteps.py", line 365, in start
+    return self.obj.start()
+           ^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/worker/consumer/consumer.py", line 346, in start
+    blueprint.start(self)
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/bootsteps.py", line 116, in start
+    step.start(parent)
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/worker/consumer/consumer.py", line 788, in start
+    c.loop(*c.loop_args())
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/worker/loops.py", line 96, in asynloop
+    next(loop)
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/kombu/asynchronous/hub.py", line 377, in create_loop
+    cb(*cbargs)
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/kombu/transport/redis.py", line 1394, in on_readable
+    self.cycle.on_readable(fileno)
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/kombu/transport/redis.py", line 579, in on_readable
+    chan.handlers[type]()
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/kombu/transport/redis.py", line 994, in _brpop_read
+    self.connection._deliver(loads(bytes_to_str(item)), dest)
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/kombu/transport/virtual/base.py", line 1017, in _deliver
+    callback(message)
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/kombu/transport/virtual/base.py", line 639, in _callback
+    return callback(message)
+           ^^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/kombu/messaging.py", line 668, in _receive_callback
+    return on_m(message) if on_m else self.receive(decoded, message)
+           ^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/worker/consumer/consumer.py", line 694, in on_task_received
+    strategy(
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/worker/strategy.py", line 203, in task_message_handler
+    return limit_task(req, bucket, 1)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/worker/consumer/consumer.py", line 323, in _limit_task
+    return self._schedule_bucket_request(bucket)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/worker/consumer/consumer.py", line 306, in _schedule_bucket_request
+    self._limit_move_to_pool(request)
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/worker/consumer/consumer.py", line 295, in _limit_move_to_pool
+    self.on_task_request(request)
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/worker/worker.py", line 226, in _process_task
+    req.execute_using_pool(self.pool)
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/worker/request.py", line 767, in execute_using_pool
+    result = apply_async(
+             ^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/concurrency/base.py", line 153, in apply_async
+    return self.on_apply(target, args, kwargs,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/concurrency/base.py", line 30, in apply_target
+    ret = target(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/app/trace.py", line 694, in fast_trace_task
+    R, I, T, Rstr = tasks[task].__trace__(
+                    ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/app/trace.py", line 606, in trace_task
+    I, _, _, _ = on_error(task_request, exc)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/app/trace.py", line 407, in on_error
+    R = I.handle_error_state(
+        ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/app/trace.py", line 175, in handle_error_state
+    return {
+           ^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/app/trace.py", line 236, in handle_failure
+    task.backend.mark_as_failure(
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 194, in mark_as_failure
+    self.store_result(task_id, exc, state,
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 625, in store_result
+    self._store_result(task_id, result, state, traceback,
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 1074, in _store_result
+    current_meta = self._get_task_meta_for(task_id)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 1099, in _get_task_meta_for
+    return self.decode_result(meta)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 524, in decode_result
+    return self.meta_from_decoded(self.decode(payload))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 520, in meta_from_decoded
+    meta['result'] = self.exception_to_python(meta['result'])
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/backends/base.py", line 455, in exception_to_python
+    raise ValueError("Exception information must include "
+ValueError: Exception information must include the exception type
+[2026-03-22 05:46:02,487: WARNING/MainProcess] Restoring 1 unacknowledged message(s)

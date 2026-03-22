@@ -1,0 +1,36 @@
+[2026-03-22 05:31:27,356: CRITICAL/MainProcess] Unrecoverable error: LockFailed("[Errno 2] No such file or directory: '/var/run/gaze_tracker/batch_worker.pid'")
+Traceback (most recent call last):
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/platforms.py", line 146, in acquire
+    self.write_pid()
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/platforms.py", line 219, in write_pid
+    pidfile_fd = os.open(self.path, PIDFILE_FLAGS, PIDFILE_MODE)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/var/run/gaze_tracker/batch_worker.pid'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/worker/worker.py", line 203, in start
+    self.blueprint.start(self)
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/bootsteps.py", line 112, in start
+    self.on_start()
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/apps/worker.py", line 124, in on_start
+    super().on_start()
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/worker/worker.py", line 152, in on_start
+    self.pidlock = create_pidlock(self.pidfile)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/platforms.py", line 261, in create_pidlock
+    pidlock = _create_pidlock(pidfile)
+              ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/platforms.py", line 271, in _create_pidlock
+    pidlock.acquire()
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/platforms.py", line 148, in acquire
+    reraise(LockFailed, LockFailed(str(exc)), sys.exc_info()[2])
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/exceptions.py", line 109, in reraise
+    raise value.with_traceback(tb)
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/platforms.py", line 146, in acquire
+    self.write_pid()
+  File "/home/lahirud/gaze_tracker/.venv/lib/python3.12/site-packages/celery/platforms.py", line 219, in write_pid
+    pidfile_fd = os.open(self.path, PIDFILE_FLAGS, PIDFILE_MODE)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+celery.platforms.LockFailed: [Errno 2] No such file or directory: '/var/run/gaze_tracker/batch_worker.pid'

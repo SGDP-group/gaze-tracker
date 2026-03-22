@@ -1,19 +1,27 @@
 """
-Celery tasks for asynchronous model training and processing.
+Celery tasks for asynchronous operations.
+
+This module defines various Celery tasks for:
+- ML model training and recommendations
+- Batch processing of focus tracking sessions
+- Data cleanup and maintenance operations
 """
 
-import json
-import time
-from datetime import datetime
-from typing import Dict, Any, Optional
-from celery import current_task
+import logging
+from datetime import datetime, timedelta
+from typing import Dict, Any, Optional, List
+from celery import Celery
+from sqlalchemy.orm import Session
+from sqlalchemy import desc, func
 
-from src.services.celery_app import celery_app
-from src.services.ml_service import PersonalizedMLService
-from src.services.batch_service import batch_processor
 from src.database.database import SessionLocal
-from src.database.models import UserModel, TrainingTask, UserSession
+from src.database.models import UserSession, User
+from src.services.ml_service import PersonalizedMLService
+from src.services.batch_service import BatchFocusProcessor
+from src.config import config
+from src.services.celery_app import celery_app
 
+logger = logging.getLogger(__name__)
 
 @celery_app.task(bind=True)
 def train_user_model_async(self, user_id: str, force_retrain: bool = False) -> Dict[str, Any]:
@@ -276,7 +284,7 @@ def cleanup_old_tasks():
         db.close()
 
 
-@celery_app.task(bind=True)
+@celery_app.task(bind=True, queue='batch_processing')
 def process_session_frames_async(
     self, 
     user_id: str, 
@@ -307,6 +315,42 @@ def process_session_frames_async(
         state='PROGRESS',
         meta={'status': 'Starting batch processing...', 'progress': 0}
     )
+    
+    # Resource monitoring
+    import psutil
+    import threading
+    
+    def monitor_resources():
+        """Monitor system resources during batch processing."""
+        while True:
+            cpu_percent = psutil.cpu_percent(interval=1)
+            memory_info = psutil.virtual_memory()
+            disk_info = psutil.disk_usage('/')
+            
+            resource_info = {
+                'cpu_percent': cpu_percent,
+                'memory_percent': memory_info.percent,
+                'memory_available_gb': memory_info.available / (1024**3),
+                'disk_free_gb': disk_info.free / (1024**3)
+            }
+            
+            try:
+                self.update_state(
+                    state='PROGRESS',
+                    meta={
+                        'status': 'Processing frames...',
+                        'progress': 'processing',
+                        'resources': resource_info
+                    }
+                )
+            except:
+                break  # Task may have completed
+            
+            threading.Event().wait(10)  # Update every 10 seconds
+    
+    # Start resource monitoring in background
+    monitor_thread = threading.Thread(target=monitor_resources, daemon=True)
+    monitor_thread.start()
     
     db = SessionLocal()
     
@@ -341,6 +385,9 @@ def process_session_frames_async(
             state='PROGRESS',
             meta={'status': f'Processing {frame_count} frames...', 'progress': 10}
         )
+        
+        # Initialize batch processor
+        batch_processor = BatchFocusProcessor()
         
         # Process all frames using batch processor
         session_result = batch_processor.process_session_frames(
