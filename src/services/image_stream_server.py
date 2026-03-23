@@ -154,7 +154,9 @@ class ImageStreamServer:
                 magic, version, header_len, image_len = FRAME_HEADER.unpack(frame_header)
 
                 if magic != MAGIC or version != PROTOCOL_VERSION:
-                    self._mark_drop(f"invalid protocol from {addr}")
+                    self._mark_drop(
+                        f"invalid protocol from {addr} magic={magic.hex()} version={version}"
+                    )
                     break
                 if header_len == 0 or header_len > MAX_HEADER_BYTES:
                     self._mark_drop(f"invalid header length from {addr}")

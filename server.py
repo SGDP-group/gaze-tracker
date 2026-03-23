@@ -22,7 +22,8 @@ async def lifespan(app: FastAPI):
         image_stream_server.start()
         print("Image stream server started")
     except Exception as e:
-        print(f"Failed to initialize database: {e}")
+        print(f"Failed to initialize services: {e}")
+        raise
     yield
     try:
         image_stream_server.stop()
