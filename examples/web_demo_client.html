@@ -1,0 +1,1504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Focus Management System - Web Demo Client</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            padding: 30px;
+        }
+
+        .analytics-section {
+            grid-column: 1 / -1;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 15px;
+            padding: 30px;
+            border: 2px solid #dee2e6;
+            display: none;
+        }
+
+        .analytics-section.active {
+            display: block;
+        }
+
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-top: 25px;
+        }
+
+        .analytics-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            border-left: 4px solid #007bff;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .analytics-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.12);
+        }
+
+        .analytics-card h3 {
+            color: #495057;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .metric-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #007bff;
+            margin: 10px 0;
+        }
+
+        .metric-label {
+            color: #6c757d;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+
+        .metric-detail {
+            color: #495057;
+            font-size: 0.85em;
+            line-height: 1.4;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745, #20c997);
+            transition: width 0.5s ease;
+        }
+
+        .insight-item {
+            background: #f8f9fa;
+            border-left: 3px solid #17a2b8;
+            padding: 10px 15px;
+            margin: 8px 0;
+            border-radius: 0 5px 5px 0;
+            font-size: 0.9em;
+            color: #495057;
+        }
+
+        .achievement-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #ffc107, #e0a800);
+            color: #212529;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 600;
+            margin: 3px;
+        }
+
+        .heatmap-container {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 2px;
+            margin: 15px 0;
+            font-size: 0.7em;
+        }
+
+        .heatmap-cell {
+            aspect-ratio: 1;
+            border-radius: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+        }
+
+        .chart-container {
+            position: relative;
+            height: 200px;
+            margin: 15px 0;
+        }
+
+        .bar-chart {
+            display: flex;
+            align-items: flex-end;
+            height: 150px;
+            gap: 8px;
+            margin: 15px 0;
+        }
+
+        .bar {
+            flex: 1;
+            background: linear-gradient(180deg, #007bff, #0056b3);
+            border-radius: 4px 4px 0 0;
+            position: relative;
+            min-height: 5px;
+            transition: all 0.3s;
+        }
+
+        .bar:hover {
+            opacity: 0.8;
+        }
+
+        .bar-label {
+            position: absolute;
+            bottom: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.7em;
+            color: #495057;
+        }
+
+        .bar-value {
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.8em;
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        .section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 25px;
+            border: 1px solid #e9ecef;
+        }
+
+        .section h2 {
+            color: #495057;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+
+        .config-section {
+            grid-column: 1 / -1;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+
+        .button-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #007bff, #0056b3);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,123,255,0.3);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #28a745, #1e7e34);
+            color: white;
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(40,167,69,0.3);
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #ffc107, #e0a800);
+            color: #212529;
+        }
+
+        .btn-warning:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(255,193,7,0.3);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #dc3545, #c82333);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(220,53,69,0.3);
+        }
+
+        .btn-info {
+            background: linear-gradient(135deg, #17a2b8, #138496);
+            color: white;
+        }
+
+        .btn-info:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(23,162,184,0.3);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #6c757d, #5a6268);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(108,117,125,0.3);
+        }
+
+        .batch-status {
+            background: linear-gradient(135deg, #e9ecef, #dee2e6);
+            border-left: 4px solid #17a2b8;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .batch-status.processing {
+            border-left-color: #ffc107;
+            background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+        }
+
+        .batch-status.completed {
+            border-left-color: #28a745;
+            background: linear-gradient(135deg, #d4edda, #c3e6cb);
+        }
+
+        .batch-status.failed {
+            border-left-color: #dc3545;
+            background: linear-gradient(135deg, #f8d7da, #f5c6cb);
+        }
+
+        .video-section {
+            grid-column: 1 / -1;
+        }
+
+        .video-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .video-box {
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+            min-height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .video-box video {
+            width: 100%;
+            height: auto;
+            border-radius: 10px;
+        }
+
+        .video-box canvas {
+            max-width: 100%;
+            border-radius: 10px;
+        }
+
+        .video-placeholder {
+            color: #6c757d;
+            font-size: 1.1em;
+            text-align: center;
+        }
+
+        .response-section {
+            grid-column: 1 / -1;
+        }
+
+        .response-container {
+            background: #212529;
+            color: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+
+        .response-entry {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #495057;
+        }
+
+        .response-entry:last-child {
+            border-bottom: none;
+        }
+
+        .response-timestamp {
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        .response-title {
+            color: #17a2b8;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+
+        .response-data {
+            margin-top: 10px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .status-bar {
+            background: #343a40;
+            color: white;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status-text {
+            font-weight: 600;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #28a745;
+            display: inline-block;
+            margin-right: 10px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .controls-row {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            margin-top: 15px;
+        }
+
+        .checkbox-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .checkbox-wrapper input[type="checkbox"] {
+            width: auto;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .video-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .button-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎯 Focus Management System</h1>
+            <p>Web Demo Client with Batch Processing Support</p>
+            <p style="font-size: 0.9em; opacity: 0.8; margin-top: 10px;">✨ Auto-Calibration | 🚀 Async Batch Processing | 🧹 Automatic Cleanup</p>
+        </div>
+
+        <div class="main-content">
+            <!-- Configuration Section -->
+            <div class="section config-section">
+                <h2>⚙️ API Configuration</h2>
+                <div class="form-group">
+                    <label for="apiUrl">API URL:</label>
+                    <input type="text" id="apiUrl" value="http://localhost:8002" placeholder="http://localhost:8002">
+                </div>
+                <div class="form-group">
+                    <label for="userId">User ID:</label>
+                    <input type="text" id="userId" value="web_user_123" placeholder="web_user_123">
+                </div>
+                <div class="form-group">
+                    <label for="apiKey">API Key (for training):</label>
+                    <input type="text" id="apiKey" value="qSQAOXdXsWblGaIbPsiqeYn4F2-07PB_qztxud1Pp7I" placeholder="Enter API key for training features">
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="autoCalibration">
+                        Auto-Calibration (First 10 seconds)
+                    </label>
+                </div>
+                <button class="btn btn-primary" onclick="updateConfig()">Update Configuration</button>
+                <button class="btn btn-info" onclick="checkBatchWorkers()">Check Batch Workers</button>
+                <button class="btn btn-warning" onclick="testBatchProcessing()">Test Batch Processing</button>
+            </div>
+
+            <!-- Focus Service Section -->
+            <div class="section">
+                <h2>🎯 Focus Service</h2>
+                <div class="button-grid">
+                    <button class="btn btn-success" onclick="startFocusSession()">Start Session</button>
+                    <button class="btn btn-primary" onclick="sendTestFrame()">Send Test Frame</button>
+                    <button class="btn btn-info" onclick="getSessionData()">Get Session Data</button>
+                    <button class="btn btn-warning" onclick="endFocusSession()">End Session (Batch)</button>
+                    <button class="btn btn-info" onclick="getActiveUsers()">Active Users</button>
+                    <button class="btn btn-danger" onclick="cleanupSessions()">Cleanup Sessions</button>
+                    <button class="btn btn-secondary" onclick="showAnalyticsFromSession()">Show Analytics</button>
+                </div>
+            </div>
+
+            <!-- Other API Section -->
+            <div class="section">
+                <h2>🔧 Other API Endpoints</h2>
+                <div class="button-grid">
+                    <button class="btn btn-info" onclick="healthCheck()">Health Check</button>
+                    <button class="btn btn-success" onclick="createUser()">Create User</button>
+                    <button class="btn btn-primary" onclick="getStatistics()">Get Statistics</button>
+                    <button class="btn btn-warning" onclick="startAsyncTraining()">Start Training</button>
+                    <button class="btn btn-info" onclick="getTrainingStatus()">Training Status</button>
+                    <button class="btn btn-primary" onclick="testAllEndpoints()">Test All</button>
+                </div>
+            </div>
+
+            <!-- Video Section -->
+            <div class="section video-section">
+                <h2>📹 Video Test</h2>
+                <div class="controls-row">
+                    <button class="btn btn-success" onclick="startCamera()">Start Camera</button>
+                    <button class="btn btn-danger" onclick="stopCamera()">Stop Camera</button>
+                    <button class="btn btn-primary" onclick="sendCameraFrame()">Send Frame</button>
+                    <div class="checkbox-wrapper">
+                        <input type="checkbox" id="autoSend">
+                        <label for="autoSend">Auto Send (1/sec)</label>
+                    </div>
+                </div>
+                
+                <div class="video-container">
+                    <div class="video-box">
+                        <video id="videoElement" autoplay style="display:none;"></video>
+                        <canvas id="canvasElement" style="display:none;"></canvas>
+                        <div id="videoPlaceholder" class="video-placeholder">Camera feed will appear here</div>
+                    </div>
+                    <div class="video-box">
+                        <div id="focusInfo" class="video-placeholder">Focus information will appear here</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Response Section -->
+            <div class="section response-section">
+                <h2>📋 API Responses</h2>
+                <button class="btn btn-warning" onclick="clearResponses()">Clear Responses</button>
+                <div id="responseContainer" class="response-container">
+                    <div class="response-entry">
+                        <div class="response-timestamp">[Ready]</div>
+                        <div class="response-title">System Status</div>
+                        <div class="response-data">Click "Health Check" to test API connection...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analytics Dashboard Section -->
+            <div id="analyticsSection" class="analytics-section">
+                <h2>📊 Comprehensive Analytics Dashboard</h2>
+                <button class="btn btn-warning" onclick="hideAnalytics()">Hide Analytics</button>
+                <button class="btn btn-info" onclick="refreshAnalytics()">Refresh Analytics</button>
+                
+                <div class="analytics-grid" id="analyticsGrid">
+                    <!-- Analytics cards will be dynamically inserted here -->
+                </div>
+            </div>
+        </div>
+
+        <div class="status-bar">
+            <div class="status-text">
+                <span class="status-indicator"></span>
+                <span id="statusText">Ready</span>
+            </div>
+            <div id="timestamp">00:00:00</div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let apiUrl = 'http://localhost:8000';
+        let userId = 'web_user_123';
+        let sessionId = null;
+        let cameraActive = false;
+        let autoSendInterval = null;
+        let videoStream = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            updateTimestamp();
+            setInterval(updateTimestamp, 1000);
+        });
+
+        // Utility functions
+        function updateTimestamp() {
+            const now = new Date();
+            document.getElementById('timestamp').textContent = now.toLocaleTimeString();
+        }
+
+        function updateStatus(message) {
+            document.getElementById('statusText').textContent = message;
+        }
+
+        function logResponse(title, data) {
+            const container = document.getElementById('responseContainer');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            const entry = document.createElement('div');
+            entry.className = 'response-entry';
+            entry.innerHTML = `
+                <div class="response-timestamp">[${timestamp}]</div>
+                <div class="response-title">${title}</div>
+                <div class="response-data">${JSON.stringify(data, null, 2)}</div>
+            `;
+            
+            container.appendChild(entry);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function clearResponses() {
+            document.getElementById('responseContainer').innerHTML = '';
+            updateStatus('Responses cleared');
+        }
+
+        async function makeApiRequest(method, endpoint, data = null, params = null) {
+            try {
+                const url = new URL(`${apiUrl}/api/v1${endpoint}`);
+                
+                const options = {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                };
+
+                // Add API key for training endpoints
+                if (endpoint.includes('/models/')) {
+                    const apiKey = document.getElementById('apiKey').value;
+                    if (apiKey) {
+                        options.headers['Authorization'] = `Bearer ${apiKey}`;
+                    }
+                }
+
+                if (data && (method === 'POST' || method === 'PUT')) {
+                    options.body = JSON.stringify(data);
+                }
+
+                if (params) {
+                    Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
+                }
+
+                const response = await fetch(url.toString(), options);
+                
+                // Check if response is JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    return { success: false, error: 'Non-JSON response', status: response.status, data: text };
+                }
+                
+                const responseData = await response.json();
+                
+                return { success: response.ok, status: response.status, data: responseData };
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        }
+
+        // Configuration
+        function updateConfig() {
+            apiUrl = document.getElementById('apiUrl').value;
+            userId = document.getElementById('userId').value;
+            updateStatus(`Configuration updated: API=${apiUrl}, User=${userId}`);
+        }
+
+        // Focus Service functions
+        async function startFocusSession() {
+            const data = {
+                user_id: userId,
+                session_name: `Web Session ${new Date().toLocaleTimeString()}`
+            };
+
+            const result = await makeApiRequest('POST', '/focus/session/start', data);
+            
+            if (result.success) {
+                sessionId = result.data.session_id;
+                updateStatus(`Session started: ${sessionId}`);
+                logResponse('Start Session', result.data);
+            } else {
+                updateStatus('Failed to start session');
+                logResponse('Start Session Error', result);
+            }
+        }
+
+        async function sendTestFrame() {
+            // Create a test canvas with a face-like pattern
+            const canvas = document.createElement('canvas');
+            canvas.width = 320;
+            canvas.height = 240;
+            const ctx = canvas.getContext('2d');
+
+            // Draw background
+            ctx.fillStyle = '#87CEEB';
+            ctx.fillRect(0, 0, 320, 240);
+
+            // Draw face-like shape
+            ctx.fillStyle = '#FDBCB4';
+            ctx.beginPath();
+            ctx.ellipse(160, 120, 60, 40, 0, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // Draw eyes
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.ellipse(140, 110, 8, 12, 0, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(180, 110, 8, 12, 0, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // Draw mouth
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(160, 130, 20, 0, Math.PI);
+            ctx.stroke();
+
+            // Convert to base64
+            const frameData = canvas.toDataURL('image/jpeg');
+
+            const data = {
+                user_id: userId,
+                frame_data: frameData,
+                image_width: 320,
+                image_height: 240
+            };
+
+            const result = await makeApiRequest('POST', '/focus/analyze', data);
+            
+            if (result.success) {
+                updateStatus(`Frame analyzed: ${result.data.current_state} (Score: ${result.data.focus_score.toFixed(1)}%)`);
+                logResponse('Frame Analysis', result.data);
+                updateFocusInfo(result.data);
+            } else {
+                updateStatus('Failed to analyze frame');
+                logResponse('Frame Analysis Error', result);
+            }
+        }
+
+        async function getSessionData() {
+            const result = await makeApiRequest('GET', `/focus/session/${userId}`);
+            
+            if (result.success) {
+                updateStatus(`Session data: ${result.data.total_frames} frames`);
+                logResponse('Session Data', result.data);
+                
+                // Update focus info with current session data
+                updateFocusInfo(result.data);
+            } else {
+                updateStatus('Failed to get session data');
+                logResponse('Session Data Error', result);
+            }
+        }
+
+        async function showAnalyticsFromSession() {
+            const result = await makeApiRequest('GET', `/focus/session/${userId}`);
+            
+            if (result.success && result.data.comprehensive_analytics) {
+                showAnalytics(result.data.comprehensive_analytics);
+                logResponse('Analytics Displayed', result.data.comprehensive_analytics);
+            } else {
+                updateStatus('No analytics data available - end a session first');
+                logResponse('Analytics Error', result);
+            }
+        }
+
+        async function endFocusSession() {
+            updateStatus('Ending session and starting batch processing...');
+            
+            const result = await makeApiRequest('POST', '/focus/session/end', null, { user_id: userId });
+            
+            if (result.success) {
+                sessionId = null;
+                
+                if (result.data.task_id) {
+                    // Batch processing initiated
+                    updateStatus(`Batch processing started: Task ${result.data.task_id}`);
+                    logResponse('Session Ended - Batch Processing Started', {
+                        message: 'Session ended successfully, batch processing initiated',
+                        task_id: result.data.task_id,
+                        user_id: result.data.user_id,
+                        session_id: result.data.session_id
+                    });
+                    
+                    // Start polling for batch processing results
+                    pollBatchResults(result.data.task_id);
+                } else {
+                    // Legacy sync processing (fallback)
+                    updateStatus(`Session ended: Final score ${result.data.focus_score.toFixed(1)}%`);
+                    logResponse('End Session (Legacy)', result.data);
+                    
+                    if (result.data.comprehensive_analytics) {
+                        showAnalytics(result.data.comprehensive_analytics);
+                    }
+                }
+            } else {
+                updateStatus('Failed to end session');
+                logResponse('End Session Error', result);
+            }
+        }
+
+        async function pollBatchResults(taskId, maxAttempts = 60) {
+            let attempts = 0;
+            
+            const poll = async () => {
+                attempts++;
+                
+                try {
+                    const result = await makeApiRequest('GET', `/focus/session/batch-result/${taskId}`);
+                    
+                    if (result.success) {
+                        const data = result.data;
+                        
+                        if (data.status === 'completed') {
+                            updateStatus(`Batch processing completed: Score ${data.focus_score?.toFixed(1) || 'N/A'}%`);
+                            logResponse('Batch Processing Completed', data);
+                            
+                            // Show analytics if available
+                            if (data.comprehensive_analytics) {
+                                showAnalytics(data.comprehensive_analytics);
+                            }
+                            
+                            // Show calibration results
+                            if (data.calibration_result) {
+                                logResponse('Auto-Calibration Results', data.calibration_result);
+                            }
+                            
+                            // Show cleanup status
+                            if (data.frames_cleanup_status) {
+                                logResponse('Frame Cleanup Status', {
+                                    status: data.frames_cleanup_status,
+                                    message: `Frames ${data.frames_cleanup_status === 'completed' ? 'cleaned up successfully' : 'cleanup failed'}`
+                                });
+                            }
+                        } else if (data.status === 'failed') {
+                            updateStatus('Batch processing failed');
+                            logResponse('Batch Processing Failed', data);
+                        } else if (data.status === 'processing' && attempts < maxAttempts) {
+                            // Still processing, continue polling
+                            updateStatus(`Batch processing... (${attempts}/${maxAttempts})`);
+                            setTimeout(poll, 2000); // Poll every 2 seconds
+                        } else {
+                            updateStatus('Batch processing timeout');
+                            logResponse('Batch Processing Timeout', {
+                                task_id: taskId,
+                                attempts: attempts,
+                                last_status: data.status
+                            });
+                        }
+                    } else {
+                        // Error polling results
+                        if (attempts < maxAttempts) {
+                            setTimeout(poll, 2000);
+                        } else {
+                            updateStatus('Batch result polling failed');
+                            logResponse('Batch Result Polling Error', result);
+                        }
+                    }
+                } catch (error) {
+                    if (attempts < maxAttempts) {
+                        setTimeout(poll, 2000);
+                    } else {
+                        updateStatus('Batch result polling error');
+                        logResponse('Batch Result Polling Error', { error: error.message });
+                    }
+                }
+            };
+            
+            // Start polling
+            setTimeout(poll, 1000); // Wait 1 second before first poll
+        }
+
+        // Analytics functions
+        function showAnalytics(analytics) {
+            const analyticsSection = document.getElementById('analyticsSection');
+            const analyticsGrid = document.getElementById('analyticsGrid');
+            
+            analyticsSection.classList.add('active');
+            analyticsGrid.innerHTML = '';
+            
+            // Deep Work Metrics
+            if (analytics.deep_work_metrics) {
+                analyticsGrid.appendChild(createDeepWorkCard(analytics.deep_work_metrics));
+            }
+            
+            // Distraction Analytics
+            if (analytics.distraction_analytics) {
+                analyticsGrid.appendChild(createDistractionCard(analytics.distraction_analytics));
+            }
+            
+            // Biological Trends
+            if (analytics.biological_trends) {
+                analyticsGrid.appendChild(createBiologicalCard(analytics.biological_trends));
+            }
+            
+            // Gamification Stats
+            if (analytics.gamification_stats) {
+                analyticsGrid.appendChild(createGamificationCard(analytics.gamification_stats));
+            }
+            
+            // Insights
+            if (analytics.insights && analytics.insights.length > 0) {
+                analyticsGrid.appendChild(createInsightsCard(analytics.insights));
+            }
+            
+            updateStatus('Analytics dashboard updated');
+        }
+
+        function hideAnalytics() {
+            const analyticsSection = document.getElementById('analyticsSection');
+            analyticsSection.classList.remove('active');
+            updateStatus('Analytics dashboard hidden');
+        }
+
+        async function refreshAnalytics() {
+            const result = await makeApiRequest('GET', `/focus/session/${userId}`);
+            
+            if (result.success && result.data.comprehensive_analytics) {
+                showAnalytics(result.data.comprehensive_analytics);
+            } else {
+                updateStatus('No analytics data available');
+            }
+        }
+
+        function createDeepWorkCard(metrics) {
+            const card = document.createElement('div');
+            card.className = 'analytics-card';
+            
+            const focusDuration = metrics.focus_duration || {};
+            const efficiency = metrics.focus_efficiency || 0;
+            
+            card.innerHTML = `
+                <h3>🎯 Deep Work Metrics</h3>
+                <div class="metric-label">Focus Duration (Current)</div>
+                <div class="metric-value">${(focusDuration.current_session_hours || 0).toFixed(2)}h</div>
+                <div class="metric-detail">Daily: ${(focusDuration.daily_total_hours || 0).toFixed(2)}h | Weekly: ${(focusDuration.weekly_total_hours || 0).toFixed(2)}h</div>
+                
+                <div class="metric-label" style="margin-top: 15px;">Focus Efficiency</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${Math.min(efficiency, 100)}%"></div>
+                </div>
+                <div class="metric-detail">${efficiency.toFixed(1)}% of session time focused</div>
+                
+                <div class="metric-label" style="margin-top: 15px;">Focus-to-Rest Ratio</div>
+                <div class="metric-value" style="font-size: 1.5em;">${metrics.focus_to_rest_ratio || 0}:1</div>
+                <div class="metric-detail">Higher ratio indicates better focus consistency</div>
+                
+                <div class="metric-label" style="margin-top: 15px;">Longest Focus Streak</div>
+                <div class="metric-value" style="font-size: 1.2em;">${(metrics.longest_focus_streak?.minutes || 0).toFixed(1)}m</div>
+                <div class="metric-detail">Best continuous focus period</div>
+            `;
+            
+            return card;
+        }
+
+        function createDistractionCard(metrics) {
+            const card = document.createElement('div');
+            card.className = 'analytics-card';
+            card.style.borderLeftColor = '#dc3545';
+            
+            const contextCost = metrics.context_switching_cost || {};
+            const recovery = metrics.recovery_metrics || {};
+            
+            card.innerHTML = `
+                <h3>🚫 Distraction Analytics</h3>
+                <div class="metric-label">Interruption Count</div>
+                <div class="metric-value">${metrics.interruption_count || 0}</div>
+                <div class="metric-detail">Significant distractions (>60s)</div>
+                
+                <div class="metric-label" style="margin-top: 15px;">Context Switching Cost</div>
+                <div class="metric-value" style="font-size: 1.5em;">${(contextCost.total_minutes || 0).toFixed(1)}m</div>
+                <div class="metric-detail">Productivity lost to interruptions</div>
+                
+                <div class="metric-label" style="margin-top: 15px;">Distraction Frequency</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${Math.min(metrics.distraction_frequency || 0, 100)}%; background: linear-gradient(90deg, #dc3545, #c82333)"></div>
+                </div>
+                <div class="metric-detail">${(metrics.distraction_frequency || 0).toFixed(1)}% of session time</div>
+                
+                <div class="metric-label" style="margin-top: 15px;">Average Recovery Time</div>
+                <div class="metric-value" style="font-size: 1.2em;">${(recovery.average_recovery_time_seconds || 0).toFixed(1)}s</div>
+                <div class="metric-detail">Time to refocus after distraction</div>
+            `;
+            
+            return card;
+        }
+
+        function createBiologicalCard(trends) {
+            const card = document.createElement('div');
+            card.className = 'analytics-card';
+            card.style.borderLeftColor = '#28a745';
+            
+            const peakTimes = trends.peak_performance_times || [];
+            const heatmap = trends.focus_heatmap || [];
+            
+            card.innerHTML = `
+                <h3>🌱 Biological Trends</h3>
+                <div class="metric-label">Peak Performance Time</div>
+                <div class="metric-value" style="font-size: 1.5em;">${peakTimes.length > 0 ? `${peakTimes[0].hour}:00` : 'N/A'}</div>
+                <div class="metric-detail">${peakTimes.length > 0 ? `Score: ${(peakTimes[0].average_focus_score || 0).toFixed(1)}%` : 'No data available'}</div>
+                
+                <div class="metric-label" style="margin-top: 15px;">Focus Heatmap (Last 7 Days)</div>
+                <div class="heatmap-container">
+                    ${generateHeatmapCells(heatmap)}
+                </div>
+                <div class="metric-detail">Hour × Day performance patterns</div>
+                
+                <div class="metric-label" style="margin-top: 15px;">Pattern Consistency</div>
+                <div class="metric-value" style="font-size: 1.2em;">${trends.rhythmic_insights?.pattern_consistency ? (trends.rhythmic_insights.pattern_consistency).toFixed(0) : 'N/A'}%</div>
+                <div class="metric-detail">Predictability of focus patterns</div>
+            `;
+            
+            return card;
+        }
+
+        function createGamificationCard(stats) {
+            const card = document.createElement('div');
+            card.className = 'analytics-card';
+            card.style.borderLeftColor = '#ffc107';
+            
+            const streaks = stats.focus_streaks || {};
+            const achievements = stats.achievements || [];
+            const peerComparison = stats.peer_comparison || {};
+            
+            card.innerHTML = `
+                <h3>🎮 Gamification Stats</h3>
+                <div class="metric-label">Current Focus Streak</div>
+                <div class="metric-value" style="font-size: 1.5em;">${streaks.current_streak || 0} 🔥</div>
+                <div class="metric-detail">Longest: ${streaks.longest_streak || 0} days | Total: ${streaks.total_active_days || 0} active days</div>
+                
+                <div class="metric-label" style="margin-top: 15px;">Peer Comparison</div>
+                <div class="metric-value" style="font-size: 1.3em;">${peerComparison.focus_score_percentile ? (peerComparison.focus_score_percentile).toFixed(0) : 'N/A'}%</div>
+                <div class="metric-detail">${peerComparison.comparison_summary || 'No peer data available'}</div>
+                
+                <div class="metric-label" style="margin-top: 15px;">Achievements Unlocked</div>
+                <div style="margin: 10px 0;">
+                    ${achievements.map(achievement => 
+                        `<span class="achievement-badge" title="${achievement.description}">${achievement.name}</span>`
+                    ).join('')}
+                    ${achievements.length === 0 ? '<div class="metric-detail">No achievements yet</div>' : ''}
+                </div>
+            `;
+            
+            return card;
+        }
+
+        function createInsightsCard(insights) {
+            const card = document.createElement('div');
+            card.className = 'analytics-card';
+            card.style.borderLeftColor = '#17a2b8';
+            
+            card.innerHTML = `
+                <h3>💡 Personalized Insights</h3>
+                ${insights.map(insight => 
+                    `<div class="insight-item">${insight}</div>`
+                ).join('')}
+            `;
+            
+            return card;
+        }
+
+        function generateHeatmapCells(heatmap) {
+            const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+            const hours = [6, 12, 18]; // Sample hours for display
+            
+            return hours.map(hour => 
+                days.map((day, dayIndex) => {
+                    const cellData = heatmap.find(h => h.day_of_week === dayIndex && h.hour === hour);
+                    const score = cellData ? cellData.focus_score : 0;
+                    const intensity = score / 100;
+                    const color = `rgba(40, 167, 69, ${intensity})`;
+                    
+                    return `<div class="heatmap-cell" style="background: ${color}" title="${hour}:00 - Score: ${score.toFixed(1)}%">${hour}</div>`;
+                }).join('')
+            ).join('');
+        }
+
+        async function getActiveUsers() {
+            const result = await makeApiRequest('GET', '/focus/users/active');
+            
+            if (result.success) {
+                updateStatus(`Active users: ${result.data.total_count}`);
+                logResponse('Active Users', result.data);
+            } else {
+                updateStatus('Failed to get active users');
+                logResponse('Active Users Error', result);
+            }
+        }
+
+        async function cleanupSessions() {
+            const result = await makeApiRequest('POST', '/focus/cleanup');
+            
+            if (result.success) {
+                updateStatus(`Cleanup completed: ${result.data.active_users} active users`);
+                logResponse('Cleanup Sessions', result.data);
+            } else {
+                updateStatus('Failed to cleanup sessions');
+                logResponse('Cleanup Error', result);
+            }
+        }
+
+        // Batch processing functions
+        async function checkBatchWorkers() {
+            updateStatus('Checking batch worker status...');
+            
+            try {
+                // Check Redis and worker status
+                const result = await makeApiRequest('GET', '/focus/batch-workers/status');
+                
+                if (result.success) {
+                    updateStatus(`Batch workers: ${result.data.active_workers} active`);
+                    logResponse('Batch Workers Status', result.data);
+                } else {
+                    // Fallback: try to get general health
+                    const healthResult = await makeApiRequest('GET', '/focus/health');
+                    if (healthResult.success) {
+                        updateStatus('Batch workers status: API healthy (no direct status endpoint)');
+                        logResponse('Batch Workers Status (Indirect)', {
+                            message: 'API is healthy, batch workers likely running',
+                            api_health: healthResult.data
+                        });
+                    } else {
+                        updateStatus('Cannot check batch worker status');
+                        logResponse('Batch Workers Status Error', healthResult);
+                    }
+                }
+            } catch (error) {
+                updateStatus('Error checking batch workers');
+                logResponse('Batch Workers Check Error', { error: error.message });
+            }
+        }
+
+        async function testBatchProcessing() {
+            updateStatus('Testing batch processing with sample frames...');
+            
+            try {
+                // Create test frames
+                const testFrames = [];
+                for (let i = 0; i < 5; i++) {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 320;
+                    canvas.height = 240;
+                    const ctx = canvas.getContext('2d');
+
+                    // Draw background
+                    ctx.fillStyle = '#87CEEB';
+                    ctx.fillRect(0, 0, 320, 240);
+
+                    // Draw face-like shape with slight variation
+                    ctx.fillStyle = '#FDBCB4';
+                    ctx.beginPath();
+                    ctx.ellipse(160 + Math.sin(i) * 10, 120, 60, 40, 0, 0, 2 * Math.PI);
+                    ctx.fill();
+
+                    // Draw eyes
+                    ctx.fillStyle = '#000';
+                    ctx.beginPath();
+                    ctx.ellipse(140, 110, 8, 12, 0, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.ellipse(180, 110, 8, 12, 0, 0, 2 * Math.PI);
+                    ctx.fill();
+
+                    // Draw mouth
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(160, 130, 20, 0, Math.PI);
+                    ctx.stroke();
+
+                    testFrames.push(canvas.toDataURL('image/jpeg'));
+                }
+
+                // Submit batch processing request
+                const data = {
+                    user_id: `${userId}_batch_test`,
+                    session_id: `batch_test_${Date.now()}`,
+                    frames: testFrames,
+                    session_start: new Date().toISOString()
+                };
+
+                const result = await makeApiRequest('POST', '/focus/batch-process', data);
+                
+                if (result.success) {
+                    updateStatus(`Batch test submitted: ${result.data.task_id}`);
+                    logResponse('Batch Processing Test Started', result.data);
+                    
+                    // Poll for results
+                    if (result.data.task_id) {
+                        pollBatchResults(result.data.task_id);
+                    }
+                } else {
+                    updateStatus('Batch processing test failed');
+                    logResponse('Batch Processing Test Error', result);
+                }
+            } catch (error) {
+                updateStatus('Error in batch processing test');
+                logResponse('Batch Processing Test Error', { error: error.message });
+            }
+        }
+
+        function testCalibrateFunction() {
+            console.log('Test function called - button is working!');
+            alert('Auto-calibration is now handled automatically during batch processing!');
+        }
+
+        // Other API functions
+        async function healthCheck() {
+            // Check main health
+            const mainResult = await makeApiRequest('GET', '/health');
+            if (mainResult.success) {
+                logResponse('Main Health', mainResult.data);
+            } else {
+                logResponse('Main Health Error', mainResult);
+            }
+
+            // Check focus health
+            const focusResult = await makeApiRequest('GET', '/focus/health');
+            if (focusResult.success) {
+                logResponse('Focus Health', focusResult.data);
+            } else {
+                logResponse('Focus Health Error', focusResult);
+            }
+
+            updateStatus('Health check completed');
+        }
+
+        async function createUser() {
+            const data = {
+                user_id: `test_user_${Date.now()}`
+            };
+
+            const result = await makeApiRequest('POST', '/users', data);
+            
+            if (result.success) {
+                updateStatus(`User created: ${result.data.user_id}`);
+                logResponse('Create User', result.data);
+            } else {
+                updateStatus('Failed to create user');
+                logResponse('Create User Error', result);
+            }
+        }
+
+        async function getStatistics() {
+            const result = await makeApiRequest('GET', '/analytics/statistics');
+            
+            if (result.success) {
+                updateStatus('Statistics retrieved');
+                logResponse('Statistics', result.data);
+            } else {
+                updateStatus('Failed to get statistics');
+                logResponse('Statistics Error', result);
+            }
+        }
+
+        async function startAsyncTraining() {
+            const data = {
+                user_id: 'demo_user', // Use the authenticated user
+                force_retrain: false
+            };
+
+            const result = await makeApiRequest('POST', '/models/train/async', data);
+            
+            if (result.success) {
+                updateStatus(`Training started: ${result.data.task_id}`);
+                logResponse('Training Started', result.data);
+            } else {
+                updateStatus('Failed to start training');
+                logResponse('Training Error', result);
+            }
+        }
+
+        async function getTrainingStatus() {
+            const taskId = 'test_task_123'; // Placeholder
+            const result = await makeApiRequest('GET', `/models/train/status/${taskId}`);
+            
+            logResponse('Training Status', result.success ? result.data : result);
+            updateStatus('Training status retrieved');
+        }
+
+        async function testAllEndpoints() {
+            updateStatus('Testing all endpoints...');
+            
+            await healthCheck();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await startFocusSession();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await sendTestFrame();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await getSessionData();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await getActiveUsers();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await endFocusSession();
+            
+            updateStatus('All endpoints tested');
+        }
+
+        // Camera functions
+        async function startCamera() {
+            try {
+                const video = document.getElementById('videoElement');
+                const placeholder = document.getElementById('videoPlaceholder');
+                
+                videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = videoStream;
+                
+                video.style.display = 'block';
+                placeholder.style.display = 'none';
+                
+                cameraActive = true;
+                updateStatus('Camera started');
+            } catch (error) {
+                updateStatus(`Camera error: ${error.message}`);
+                logResponse('Camera Error', { error: error.message });
+            }
+        }
+
+        function stopCamera() {
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+            }
+            
+            const video = document.getElementById('videoElement');
+            const placeholder = document.getElementById('videoPlaceholder');
+            
+            video.style.display = 'none';
+            placeholder.style.display = 'flex';
+            placeholder.textContent = 'Camera feed will appear here';
+            
+            cameraActive = false;
+            
+            if (autoSendInterval) {
+                clearInterval(autoSendInterval);
+                autoSendInterval = null;
+            }
+            
+            updateStatus('Camera stopped');
+        }
+
+        async function sendCameraFrame() {
+            if (!cameraActive) {
+                updateStatus('Camera not active');
+                return;
+            }
+
+            const video = document.getElementById('videoElement');
+            const canvas = document.getElementById('canvasElement');
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0);
+
+            const frameData = canvas.toDataURL('image/jpeg');
+
+            const data = {
+                user_id: userId,
+                frame_data: frameData,
+                image_width: canvas.width,
+                image_height: canvas.height
+            };
+
+            const result = await makeApiRequest('POST', '/focus/analyze', data);
+            
+            if (result.success) {
+                updateStatus(`Camera frame: ${result.data.current_state} (Score: ${result.data.focus_score.toFixed(1)}%)`);
+                logResponse('Camera Frame Analysis', result.data);
+                updateFocusInfo(result.data);
+            } else {
+                updateStatus('Failed to send camera frame');
+                logResponse('Camera Frame Error', result);
+            }
+        }
+
+        function updateFocusInfo(data) {
+            const focusInfo = document.getElementById('focusInfo');
+            
+            let html = `
+                <div style="color: white; text-align: center; padding: 20px;">
+                    <h3>Focus Analysis Results</h3>
+                    <p><strong>State:</strong> <span style="color: ${getStateColor(data.current_state)}">${data.current_state}</span></p>
+                    <p><strong>Score:</strong> ${data.focus_score.toFixed(1)}%</p>
+                    <p><strong>Baseline Angle:</strong> ${data.baseline_angle.toFixed(1)}°</p>
+                    <p><strong>Average FPS:</strong> ${data.average_fps.toFixed(1)}</p>
+            `;
+
+            // Add auto-calibration metrics if available
+            if (data.calibration_result) {
+                html += `
+                    <p><strong>🔧 Auto-Calibration:</strong> <span style="color: #28a745">${data.calibration_result.calibration_method || 'First 10 seconds'}</span></p>
+                    <p><strong>Calibration Frames:</strong> ${data.calibration_result.calibration_frames_used || 'N/A'}</p>
+                    <p><strong>Reference Angle:</strong> ${data.calibration_result.reference_angle ? data.calibration_result.reference_angle.toFixed(1) + '°' : 'N/A'}</p>
+                `;
+            }
+
+            if (data.face_metrics) {
+                html += `
+                    <p><strong>Face Detected:</strong> Yes</p>
+                    <p><strong>Confidence:</strong> ${(data.face_metrics.confidence * 100).toFixed(1)}%</p>
+                    <p><strong>Angle:</strong> ${data.face_metrics.angle.toFixed(1)}°</p>
+                `;
+            } else {
+                html += `<p><strong>Face Detected:</strong> No</p>`;
+            }
+
+            html += `
+                <p><strong>Total Frames:</strong> ${data.session_stats.total_frames}</p>
+                <p><strong>Focused Frames:</strong> ${data.session_stats.focused_frames}</p>
+                </div>
+            `;
+
+            focusInfo.innerHTML = html;
+        }
+
+        function getStateColor(state) {
+            switch(state) {
+                case 'FOCUSED': return '#28a745';
+                case 'DISTRACTED': return '#dc3545';
+                case 'AWAY': return '#6c757d';
+                default: return '#ffc107';
+            }
+        }
+
+        // Auto-send functionality
+        document.getElementById('autoSend').addEventListener('change', function() {
+            if (this.checked && cameraActive) {
+                autoSendInterval = setInterval(sendCameraFrame, 1000);
+                updateStatus('Auto-send enabled (1 frame/sec)');
+            } else {
+                if (autoSendInterval) {
+                    clearInterval(autoSendInterval);
+                    autoSendInterval = null;
+                }
+                updateStatus('Auto-send disabled');
+            }
+        });
+    </script>
+</body>
+</html>
