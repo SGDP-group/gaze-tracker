@@ -284,6 +284,16 @@ class FocusConfig:
     IMAGE_STREAM_BACKLOG = int(os.getenv("IMAGE_STREAM_BACKLOG", "32"))
     IMAGE_STREAM_MAX_FRAME_BYTES = int(os.getenv("IMAGE_STREAM_MAX_FRAME_BYTES", str(2 * 1024 * 1024)))
     IMAGE_STREAM_BASE_DIR = os.getenv("IMAGE_STREAM_BASE_DIR", "src/images")
+
+    RTSP_FALLBACK_ENABLED = os.getenv("RTSP_FALLBACK_ENABLED", "false").lower() == "true"
+    RTSP_SOURCE_URL = os.getenv("RTSP_SOURCE_URL", "rtsp://127.0.0.1:8554/deskclock")
+    RTSP_STREAM_TYPE = os.getenv("RTSP_STREAM_TYPE", "session")
+    RTSP_SESSION_KEY = os.getenv("RTSP_SESSION_KEY", "rtsp_fallback")
+    RTSP_SUBTASK_ID = int(os.getenv("RTSP_SUBTASK_ID", "0"))
+    RTSP_MAX_FPS = float(os.getenv("RTSP_MAX_FPS", "5.0"))
+    RTSP_JPEG_QUALITY = int(os.getenv("RTSP_JPEG_QUALITY", "70"))
+    RTSP_RECONNECT_SECONDS = float(os.getenv("RTSP_RECONNECT_SECONDS", "1.0"))
+    RTSP_BASE_DIR = os.getenv("RTSP_BASE_DIR", "src/images")
     
     @classmethod
     def get_tuning_guide(cls) -> str:

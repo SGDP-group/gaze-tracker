@@ -9,8 +9,10 @@ from contextlib import asynccontextmanager
 import uvicorn
 
 from src.database.database import create_tables
+from src.config import config
 from src.api.routes import router
 from src.services.image_stream_server import image_stream_server
+from src.services.rtsp_stream_server import rtsp_stream_server
 
 
 @asynccontextmanager
@@ -21,12 +23,17 @@ async def lifespan(app: FastAPI):
         print("Database initialized successfully")
         image_stream_server.start()
         print("Image stream server started")
+        if config.RTSP_FALLBACK_ENABLED:
+            rtsp_stream_server.start()
+            print("RTSP fallback stream server started")
     except Exception as e:
         print(f"Failed to initialize services: {e}")
         raise
     yield
     try:
         image_stream_server.stop()
+        if config.RTSP_FALLBACK_ENABLED:
+            rtsp_stream_server.stop()
         print("Image stream server stopped")
     except Exception as e:
         print(f"Failed to stop image stream server: {e}")

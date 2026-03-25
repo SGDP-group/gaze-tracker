@@ -57,6 +57,7 @@ class ImageStreamServer:
         self._frames_dropped = 0
         self._bytes_saved = 0
         self._last_error = ""
+        self._next_seq_by_dir: Dict[str, int] = {}
 
     def start(self) -> None:
         with self._lock:
@@ -179,7 +180,7 @@ class ImageStreamServer:
                 try:
                     target_dir = self._resolve_target_dir(header)
                     target_dir.mkdir(parents=True, exist_ok=True)
-                    file_path = target_dir / self._build_filename(header)
+                    file_path = target_dir / self._build_filename(target_dir)
                     with file_path.open("wb") as f:
                         f.write(payload)
 
@@ -229,20 +230,35 @@ class ImageStreamServer:
             session_key = self._sanitize_component(str(header.get("session_key", "")))
             if not session_key:
                 user_id = self._sanitize_component(str(header.get("user_id", "unknown")))
-                session_key = f"{user_id}_{int(time.time())}"
-            return self._base_dir / "sessions" / session_key
+                session_key = f"{user_id}_{self._timestamp_key()}"
+            return self._base_dir / "session" / session_key
 
         raise ValueError("stream_type must be subtask or session")
 
-    def _build_filename(self, header: Dict[str, Any]) -> str:
-        ts = header.get("timestamp_ms")
-        if ts is None:
-            ts = int(time.time() * 1000)
-        ts_int = int(ts)
+    def _build_filename(self, target_dir: Path) -> str:
+        sequence = self._next_sequence_for_dir(target_dir)
+        return f"{sequence}.jpg"
 
-        seq = header.get("seq", 0)
-        seq_int = int(seq)
-        return f"{ts_int}_{seq_int}.jpg"
+    def _next_sequence_for_dir(self, target_dir: Path) -> int:
+        key = str(target_dir)
+        with self._lock:
+            if key not in self._next_seq_by_dir:
+                max_existing = 0
+                for existing in target_dir.glob("*.jpg"):
+                    try:
+                        n = int(existing.stem)
+                        if n > max_existing:
+                            max_existing = n
+                    except ValueError:
+                        continue
+                self._next_seq_by_dir[key] = max_existing + 1
+
+            current = self._next_seq_by_dir[key]
+            self._next_seq_by_dir[key] = current + 1
+            return current
+
+    def _timestamp_key(self) -> str:
+        return time.strftime("%Y%m%d_%H%M%S", time.localtime())
 
     def _sanitize_component(self, value: str) -> str:
         clean = []

@@ -35,6 +35,7 @@ from src.services.ml_service import PersonalizedMLService
 from src.services.tasks import train_user_model_async, get_task_status, get_user_training_history, process_session_frames_async
 from src.services.focus_service import focus_tracker
 from src.services.image_stream_server import image_stream_server
+from src.services.rtsp_stream_server import rtsp_stream_server
 
 # Initialize services
 ml_service = PersonalizedMLService()
@@ -836,5 +837,13 @@ def focus_health_check():
 def focus_stream_health_check():
     """Health endpoint for the TCP image ingestion service."""
     stats = image_stream_server.get_stats()
+    stats["timestamp"] = datetime.now().isoformat()
+    return stats
+
+
+@router.get("/focus/stream/rtsp/health")
+def focus_rtsp_stream_health_check():
+    """Health endpoint for RTSP fallback frame ingestion."""
+    stats = rtsp_stream_server.get_stats()
     stats["timestamp"] = datetime.now().isoformat()
     return stats
