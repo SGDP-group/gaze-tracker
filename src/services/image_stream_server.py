@@ -24,6 +24,7 @@ import socket
 import struct
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
@@ -57,7 +58,7 @@ class ImageStreamServer:
         self._frames_dropped = 0
         self._bytes_saved = 0
         self._last_error = ""
-        self._next_seq_by_dir: Dict[str, int] = {}
+        self._next_suffix_by_stem: Dict[str, int] = {}
 
     def start(self) -> None:
         with self._lock:
@@ -180,7 +181,7 @@ class ImageStreamServer:
                 try:
                     target_dir = self._resolve_target_dir(header)
                     target_dir.mkdir(parents=True, exist_ok=True)
-                    file_path = target_dir / self._build_filename(target_dir)
+                    file_path = target_dir / self._build_filename(target_dir, header)
                     with file_path.open("wb") as f:
                         f.write(payload)
 
@@ -235,27 +236,29 @@ class ImageStreamServer:
 
         raise ValueError("stream_type must be subtask or session")
 
-    def _build_filename(self, target_dir: Path) -> str:
-        sequence = self._next_sequence_for_dir(target_dir)
-        return f"{sequence}.jpg"
-
-    def _next_sequence_for_dir(self, target_dir: Path) -> int:
-        key = str(target_dir)
+    def _build_filename(self, target_dir: Path, header: Dict[str, Any]) -> str:
+        stem = self._datetime_stem(header)
+        key = f"{target_dir}|{stem}"
         with self._lock:
-            if key not in self._next_seq_by_dir:
-                max_existing = 0
-                for existing in target_dir.glob("*.jpg"):
-                    try:
-                        n = int(existing.stem)
-                        if n > max_existing:
-                            max_existing = n
-                    except ValueError:
-                        continue
-                self._next_seq_by_dir[key] = max_existing + 1
+            suffix = self._next_suffix_by_stem.get(key, 0)
+            self._next_suffix_by_stem[key] = suffix + 1
 
-            current = self._next_seq_by_dir[key]
-            self._next_seq_by_dir[key] = current + 1
-            return current
+        if suffix == 0:
+            return f"{stem}.jpg"
+        return f"{stem}_{suffix}.jpg"
+
+    def _datetime_stem(self, header: Dict[str, Any]) -> str:
+        timestamp_ms = header.get("timestamp_ms")
+        try:
+            if timestamp_ms is not None:
+                dt = datetime.fromtimestamp(int(timestamp_ms) / 1000.0)
+            else:
+                dt = datetime.now()
+        except (TypeError, ValueError, OSError):
+            dt = datetime.now()
+
+        # Millisecond precision keeps names readable while minimizing collisions.
+        return dt.strftime("%Y%m%d_%H%M%S_%f")[:-3]
 
     def _timestamp_key(self) -> str:
         return time.strftime("%Y%m%d_%H%M%S", time.localtime())

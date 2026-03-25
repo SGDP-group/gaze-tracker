@@ -548,7 +548,11 @@ def end_focus_session(batch_request: BatchProcessRequest, db: Session = Depends(
         import os
         from pathlib import Path
         frames_dir = Path(batch_request.frames_directory)
-        estimated_frames = len(list(frames_dir.glob('*.png'))) if frames_dir.exists() else None
+        estimated_frames = (
+            sum(1 for p in frames_dir.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg'})
+            if frames_dir.exists()
+            else None
+        )
         
         return BatchProcessResponse(
             task_id=task.id,
