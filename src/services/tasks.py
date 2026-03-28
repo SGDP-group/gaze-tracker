@@ -369,7 +369,11 @@ def process_session_frames_async(
         from pathlib import Path
         
         frames_dir = Path(frames_directory)
-        frame_count = len(list(frames_dir.glob('*.png'))) if frames_dir.exists() else 0
+        frame_count = (
+            sum(1 for p in frames_dir.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg'})
+            if frames_dir.exists()
+            else 0
+        )
         
         if frame_count == 0:
             return {

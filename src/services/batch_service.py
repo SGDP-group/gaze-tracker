@@ -72,11 +72,21 @@ class BatchFocusProcessor:
         return x_px, y_px
     
     def _extract_timestamp_from_filename(self, filename: str) -> float:
-        """Extract timestamp from filename (timestamp.png format)."""
+        """Extract timestamp from frame filename.
+
+        Supported names:
+        - Legacy numeric stems: 1234567890.png / .jpg
+        - Datetime stems: YYYYMMDD_HHMMSS_mmm.jpg (optional _N suffix)
+        """
         try:
-            # Remove .png extension and convert to float
-            timestamp_str = filename.replace('.png', '')
-            return float(timestamp_str)
+            stem = Path(filename).stem
+
+            dt_match = re.match(r'^(\d{8}_\d{6}_\d{3})(?:_\d+)?$', stem)
+            if dt_match:
+                dt = datetime.strptime(dt_match.group(1), "%Y%m%d_%H%M%S_%f")
+                return dt.timestamp()
+
+            return float(stem)
         except (ValueError, AttributeError):
             # Fallback to current time if timestamp parsing fails
             return datetime.now().timestamp()
@@ -89,12 +99,13 @@ class BatchFocusProcessor:
             raise FileNotFoundError(f"Frames directory not found: {frames_directory}")
         
         frame_files = []
-        pattern = re.compile(r'^\d+\.png$')  # Match timestamp.png pattern
-        
-        for file_path in frames_dir.glob('*.png'):
-            if pattern.match(file_path.name):
-                timestamp = self._extract_timestamp_from_filename(file_path.name)
-                frame_files.append((str(file_path), timestamp))
+        pattern = re.compile(r'^(?:\d+|\d{8}_\d{6}_\d{3}(?:_\d+)?)\.(?:png|jpg|jpeg)$', re.IGNORECASE)
+
+        for file_path in frames_dir.iterdir():
+            if not file_path.is_file() or not pattern.match(file_path.name):
+                continue
+            timestamp = self._extract_timestamp_from_filename(file_path.name)
+            frame_files.append((str(file_path), timestamp))
         
         # Sort by timestamp
         frame_files.sort(key=lambda x: x[1])
@@ -296,7 +307,10 @@ class BatchFocusProcessor:
                 return True  # Consider it successful if directory is already gone
             
             # Count files before deletion for logging
-            frame_files = list(frames_dir.glob('*.png'))
+            frame_files = [
+                p for p in frames_dir.iterdir()
+                if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg'}
+            ]
             file_count = len(frame_files)
             
             # Delete all frame files
