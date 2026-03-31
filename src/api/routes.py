@@ -33,6 +33,7 @@ from src.services.ml_service import PersonalizedMLService
 from src.services.tasks import train_user_model_async, get_task_status, get_user_training_history, process_session_frames_async
 from src.services.focus_service import focus_tracker
 from src.services.auth import create_user, get_user_by_id
+from src.services.auth import create_user, get_user_by_id
 
 # Initialize services
 ml_service = PersonalizedMLService()
@@ -48,6 +49,7 @@ def create_new_user(user: UserCreate, db: Session = Depends(get_db)):
     db_user = get_user_by_id(db, user.user_id)
     if not db_user:
         db_user = create_user(db, user.user_id)
+    
     
     return db_user
 
@@ -254,19 +256,9 @@ def get_focus_recommendations(
 @router.get("/statistics", response_model=SessionStatistics)
 def get_user_statistics(
     user_id: str,
-    db: Annotated[Session, Depends(get_db)]
+    db: Session = Depends(get_db)
 ):
-    """
-    Get aggregated user statistics across all sessions.
-    This returns general statistics like total sessions, average focus scores, and productivity trends.
-    
-    Args:
-        user_id: User identifier
-        db: Database session
-        
-    Returns:
-        Aggregated user statistics across all sessions
-    """
+    """Get user's session statistics."""
     try:
         stats = ml_service.get_user_statistics(db, user_id)
         return SessionStatistics(**stats)

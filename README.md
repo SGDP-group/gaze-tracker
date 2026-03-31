@@ -35,6 +35,21 @@ A comprehensive focus tracking and productivity analysis system using computer v
 - **Real-Time Focus State** tracking via HTTP API
 - **Session Management** with automatic cleanup
 
+### 🌐 Streaming & Batch Processing (New!)
+- **TCP Image Stream Server** for high-performance frame ingestion
+- **RTSP Stream Fallback** for camera integration
+- **Celery Batch Processing** for asynchronous frame analysis
+- **Auto-Calibration** using first 10 seconds of session
+- **Frame Persistence** with timestamp-based naming
+- **Resource Monitoring** during batch processing
+
+### 📊 Advanced Analytics (New!)
+- **Comprehensive Session Reports** with deep work metrics
+- **Distraction Analytics** including interruption tracking
+- **Biological Trends** with peak performance times
+- **Gamification Stats** with streaks and achievements
+- **Personalized Insights** based on historical patterns
+
 ### 🖥️ Demo Clients (New!)
 - **GUI Demo Client** (Python/Tkinter) with camera integration
 - **Web Demo Client** (HTML/JavaScript) for browser testing
@@ -61,8 +76,12 @@ gaze_tracker/
 │       ├── ml_service.py        # ML pipeline & recommendations
 │       ├── api_client.py        # API client for main.py
 │       ├── focus_service.py     # Focus tracking API service
+│       ├── analytics_service.py  # Advanced analytics & reporting
+│       ├── batch_service.py     # Batch frame processing
+│       ├── image_stream_server.py  # TCP stream ingestion
+│       ├── rtsp_stream_server.py   # RTSP fallback stream
 │       ├── celery_app.py        # Celery configuration
-│       └── tasks.py             # Async ML tasks
+│       └── tasks.py             # Async ML & batch tasks
 ├── models/
 │   ├── focus_schemas.py         # Focus API Pydantic models
 │   └── schemas.py               # General API models
@@ -89,9 +108,11 @@ gaze_tracker/
 
 ### Prerequisites
 - Python 3.12+
-- Webcam access
 - UV package manager
 - Redis server (for Celery async training)
+- Docker & Docker Compose (for Redis)
+- Webcam access (for real-time tracking)
+- MediaPipe face detection model (included)
 
 ### Setup
 
@@ -108,30 +129,112 @@ docker-compose up -d redis
 
 3. **Verify MediaPipe model:**
 ```bash
-ls detector.tflite  # Should exist in project root
+ls model/detector.tflite  # Should exist in model/ directory
+```
+
+4. **Create necessary directories:**
+```bash
+mkdir -p data streams/subtasks streams/sessions
 ```
 
 ## Usage
 
 ### 1. Start the API Server
-For focus tracking API and personalized features:
+For focus tracking API, streaming, and analytics:
 
 ```bash
 uv run server.py
 ```
 
-The API will be available at `http://localhost:8000`
-- **API Documentation**: `http://localhost:8000/docs`
-- **Focus API Health**: `http://localhost:8000/api/v1/focus/health`
+The API will be available at `http://localhost:8002`
+- **API Documentation**: `http://localhost:8002/docs`
+- **Focus API Health**: `http://localhost:8002/api/v1/focus/health`
 - **Interactive Demo**: Open `examples/web_demo_client.html`
 
-### 2. Start Celery Worker (for async training)
+**Note**: The server automatically starts:
+- Image stream server (TCP port 9999)
+- RTSP fallback server (if enabled)
+- Database initialization
 
+### 2. Start Celery Workers
+
+For async processing, start both workers:
+
+```bash
+# Terminal 1: ML Training Worker
+uv run celery -A src.services.celery_app worker --loglevel=info --queues=ml_training,maintenance &
+
+# Terminal 2: Batch Processing Worker  
+uv run celery -A src.services.celery_app worker --loglevel=info --queues=batch_processing &
+```
+
+Or start all workers with default configuration:
 ```bash
 uv run celery -A src.services.celery_app worker --loglevel=info &
 ```
 
-### 3. Test with Demo Clients
+### 3. Streaming Setup
+
+#### TCP Stream Client (Recommended)
+Connect to the TCP image stream server for high-performance frame ingestion:
+
+```python
+# Example: Stream client implementation
+import socket
+import struct
+import json
+
+# Connect to stream server
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.connect(('localhost', 9999))
+
+# Send frame with metadata
+frame_data = b'...'  # JPEG bytes
+header = {
+    'stream_type': 'session',
+    'user_id': 'user123',
+    'session_key': 'session_001',
+    'timestamp_ms': int(time.time() * 1000)
+}
+
+# Send using custom protocol
+header_bytes = json.dumps(header).encode('utf-8')
+sock.sendall(b'GZTK' + struct.pack('>HHI', 1, len(header_bytes), len(frame_data)) + header_bytes + frame_data)
+```
+
+#### RTSP Stream Fallback
+Configure RTSP source in environment variables:
+```bash
+export RTSP_SOURCE_URL=rtsp://camera-ip:554/stream
+export RTSP_FALLBACK_ENABLED=true
+```
+
+### 4. Batch Processing Workflow
+
+#### Start Session and Stream Frames
+```bash
+# 1. Start session
+curl -X POST "http://localhost:8002/api/v1/focus/session/start" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "user123", "session_name": "Work Session"}'
+
+# 2. Stream frames (via TCP client or RTSP)
+# Frames are automatically saved to streams/sessions/{session_key}/
+
+# 3. End session to trigger batch processing
+curl -X POST "http://localhost:8002/api/v1/focus/session/end?user_id=user123"
+```
+
+#### Monitor Batch Processing
+```bash
+# Check processing status
+curl "http://localhost:8002/api/v1/focus/session/{session_id}/result"
+
+# Monitor Celery tasks
+celery -A src.services.celery_app events
+```
+
+### 5. Test with Demo Clients
 
 #### GUI Demo Client (Desktop)
 ```bash
@@ -142,16 +245,18 @@ Features:
 - 📹 Real-time camera integration
 - 📊 Live response logging
 - ⚙️ Configurable API settings
+- 🌐 Streaming support with TCP client
 
 #### Web Demo Client (Browser)
 ```bash
 open examples/web_demo_client.html
 ```
 Features:
-- 🌐 Modern web interface
+- 🌐 Modern web interface with comprehensive analytics dashboard
 - 📱 Mobile-friendly design
 - 📹 WebRTC camera support
 - 🔄 Auto-send functionality
+- 📊 Real-time analytics visualization
 
 #### Command Line Client
 ```bash
@@ -162,8 +267,11 @@ Features:
 - 🖼️ Static image testing
 - 👥 Multi-user demo
 - 📊 Session management
+- 🌐 Streaming integration
 
-### 4. Run Traditional Focus Tracking
+### 6. Run Traditional Focus Tracking
+
+For standalone focus tracking without streaming:
 
 ```bash
 uv run python main.py
@@ -176,8 +284,9 @@ uv run python main.py
 - Interactive feedback collection
 - Personalized recommendations (if API is running)
 
-### 5. Test with Pytest
+### 7. Testing & Development
 
+#### Run Tests
 ```bash
 # Run all tests
 uv run pytest
@@ -198,6 +307,19 @@ uv run pytest --cov=src --cov-report=html
 uv run pytest tests/test_api_pytest.py
 ```
 
+#### Test Streaming & Analytics
+```bash
+# Test comprehensive analytics
+uv run python test_comprehensive_analytics.py
+
+# Test streaming functionality
+uv run python demo_analytics.py
+
+# Test batch processing
+uv run python test_realistic_analytics.py
+```
+
+#### Test Celery Integration
 ```bash
 uv run python tests/test_celery.py
 ```
@@ -208,7 +330,134 @@ This will:
 - Monitor training progress in real-time
 - Check training history and status
 
+## Streaming & Batch Processing Architecture
+
+### TCP Stream Protocol
+The system uses a custom TCP protocol for high-performance frame ingestion:
+
+```
+Frame Format (Big-Endian):
+┌─────────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────┐
+│   Magic     │  Version    │ Header Len  │ Image Len   │  Header     │   Image    │
+│   (4 bytes) │ (2 bytes)   │ (2 bytes)   │ (4 bytes)   │ (Variable)  │ (Variable) │
+│   b'GZTK'   │    uint16   │   uint16    │   uint32    │   UTF-8     │   JPEG     │
+└─────────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────┘
+```
+
+**Header Fields:**
+- `stream_type`: "subtask" or "session"
+- `user_id`: Unique user identifier
+- `subtask_id`: Required for subtask streams
+- `session_key`: Required for session streams
+- `timestamp_ms`: Optional frame timestamp
+
+### Batch Processing Pipeline
+```
+Stream Frames → Save to Disk → Celery Task → Batch Analysis → Database → Analytics
+     ↓              ↓              ↓            ↓           ↓          ↓
+TCP/RTSP → streams/{type}/{id}/ → process_session_frames_async → comprehensive_analytics
+```
+
+### Auto-Calibration System
+- Uses first 10 seconds of session frames
+- Calculates median gaze angle and magnitude
+- Provides reference for consistency tracking
+- Falls back to baseline angle if calibration fails
+
+### Resource Management
+- **Memory Monitoring**: CPU, RAM, disk usage during processing
+- **Rate Limiting**: 10 batch tasks/minute per worker
+- **Timeout Protection**: 1-hour hard limit, 55-minute soft limit
+- **Automatic Cleanup**: Frame directories deleted after processing
+
 ## API Endpoints
+
+### Batch Processing Endpoints
+#### `POST /api/v1/focus/batch/process`
+Trigger batch processing for saved frames.
+
+**Request Body:**
+```json
+{
+  "user_id": "string (required) - User identifier",
+  "session_id": "string (required) - Session identifier",
+  "frames_directory": "string (required) - Path to saved frames",
+  "session_start": "string (required) - ISO timestamp",
+  "ground_frame_calibrated": "boolean (optional) - Whether calibration is available",
+  "reference_angle": "number (optional) - Reference angle from calibration"
+}
+```
+
+**Response:**
+```json
+{
+  "task_id": "string - Celery task identifier",
+  "user_id": "string - User identifier",
+  "session_id": "string - Session identifier",
+  "status": "string - Task status",
+  "message": "string - Status message"
+}
+```
+
+#### `GET /api/v1/focus/session/{session_id}/result`
+Get batch processing results for a completed session.
+
+**Path Parameters:**
+- `session_id` (string, required) - Session identifier
+
+**Response:**
+```json
+{
+  "user_id": "string - User identifier",
+  "session_id": "string - Session identifier",
+  "status": "string - Processing status",
+  "result": {
+    "session_start": "string - Start timestamp",
+    "session_end": "string - End timestamp",
+    "total_frames": "integer - Total frames processed",
+    "focused_frames": "integer - Frames marked as focused",
+    "distracted_frames": "integer - Frames marked as distracted",
+    "away_frames": "integer - Frames with no face detected",
+    "focus_score": "number - Final focus score 0-100%",
+    "productivity_level": "string - Productivity classification",
+    "comprehensive_analytics": {
+      "deep_work_metrics": "object - Deep work analysis",
+      "distraction_analytics": "object - Distraction patterns",
+      "biological_trends": "object - Performance patterns",
+      "gamification_stats": "object - Achievement data",
+      "personalized_insights": "array - Actionable recommendations"
+    }
+  },
+  "timestamp": "string - ISO timestamp"
+}
+```
+
+### Stream Server Endpoints
+#### `GET /api/v1/stream/stats`
+Get streaming server statistics.
+
+**Response:**
+```json
+{
+  "image_stream": {
+    "running": "boolean - Server status",
+    "active_clients": "integer - Connected clients",
+    "total_clients": "integer - Total connections",
+    "frames_saved": "integer - Frames processed",
+    "frames_dropped": "integer - Frames dropped",
+    "bytes_saved": "integer - Data processed"
+  },
+  "rtsp_stream": {
+    "enabled": "boolean - RTSP fallback status",
+    "running": "boolean - Stream status",
+    "frames_decoded": "integer - Frames decoded",
+    "frames_saved": "integer - Frames saved",
+    "decode_failures": "integer - Failed decodes",
+    "reconnect_count": "integer - Reconnections"
+  },
+  "timestamp": "string - ISO timestamp"
+}
+```
 
 ### Focus Tracking API
 #### `POST /api/v1/focus/analyze`
@@ -756,9 +1005,45 @@ Analyzes successful sessions to provide:
 
 ### Environment Variables
 ```bash
-FOCUS_API_URL=http://localhost:8000/api/v1
+# API Configuration
+FOCUS_API_URL=http://localhost:8002/api/v1
 FOCUS_API_KEY=your_api_key_here
 FOCUS_USER_ID=your_user_id_here
+
+# Streaming Configuration
+IMAGE_STREAM_HOST=0.0.0.0
+IMAGE_STREAM_PORT=9999
+IMAGE_STREAM_BASE_DIR=streams
+IMAGE_STREAM_MAX_FRAME_BYTES=10485760  # 10MB
+IMAGE_STREAM_BACKLOG=100
+
+# RTSP Configuration
+RTSP_SOURCE_URL=rtsp://camera-ip:554/stream
+RTSP_FALLBACK_ENABLED=false
+RTSP_BASE_DIR=streams
+RTSP_STREAM_TYPE=session
+RTSP_SESSION_KEY=default_session
+RTSP_SUBTASK_ID=1
+RTSP_MAX_FPS=5.0
+RTSP_JPEG_QUALITY=85
+RTSP_RECONNECT_SECONDS=5.0
+
+# Focus Algorithm Parameters
+FOCUSED_ANGLE_THRESHOLD=20.0
+DISTRACTED_ANGLE_THRESHOLD=30.0
+DISTRACTION_CONFIRMATION_TIME=2.0
+BASELINE_ALPHA=0.05
+FOCUS_BUFFER_SIZE=100
+
+# Batch Processing
+MAX_REALISTIC_FOCUS_SCORE=95.0
+HIGH_FOCUS_THRESHOLD=85.0
+INCONSISTENCY_PENALTY_ENABLED=true
+INCONSISTENCY_PENALTY_FACTOR=0.5
+MAX_INCONSISTENCY_PENALTY=15.0
+
+# Analytics
+CONTEXT_SWITCH_RECOVERY_MINUTES=5.0
 ```
 
 ### Model Parameters
@@ -766,6 +1051,7 @@ FOCUS_USER_ID=your_user_id_here
 - **Focus Threshold**: 20° (focused vs distracted)
 - **Distraction Threshold**: 30° (distracted confirmation)
 - **Distraction Duration**: 2.0 seconds
+- **Auto-Calibration**: First 10 seconds of session
 
 ## Data Storage
 
@@ -777,9 +1063,25 @@ FOCUS_USER_ID=your_user_id_here
 - **focus_recommendations**: Time-based recommendations
 - **training_tasks**: Async training task tracking
 
+### File Storage Structure
+```
+streams/
+├── subtasks/
+│   └── {subtask_id}/
+│       ├── YYYYMMDD_HHMMSS_mmm.jpg
+│       └── YYYYMMDD_HHMMSS_mmm_1.jpg
+└── sessions/
+    └── {session_key}/
+        ├── YYYYMMDD_HHMMSS_mmm.jpg
+        └── YYYYMMDD_HHMMSS_mmm_1.jpg
+```
+
 ### Celery Architecture
 - **Redis**: Message broker and result backend
-- **Celery Workers**: Process training tasks asynchronously
+- **Celery Workers**: 
+  - `ml_training` queue: Model training and recommendations
+  - `batch_processing` queue: Frame analysis and processing
+  - `maintenance` queue: Cleanup and maintenance tasks
 - **Task Tracking**: Real-time progress monitoring
 - **Error Handling**: Comprehensive error recovery and logging
 
@@ -799,25 +1101,96 @@ FOCUS_USER_ID=your_user_id_here
 
 ### Common Issues
 
-1. **Webcam not detected**
-   - Check camera permissions
-   - Verify no other applications are using the camera
+1. **Stream connection failed**
+   - Check TCP port 9999 is not blocked by firewall
+   - Verify image stream server is running: `curl http://localhost:8002/api/v1/stream/stats`
+   - Ensure frame format follows TCP protocol specification
 
-2. **API connection failed**
-   - Ensure API server is running on port 8000
+2. **RTSP fallback not working**
+   - Verify RTSP URL is accessible: `ffprobe rtsp://camera-ip:554/stream`
+   - Check `RTSP_FALLBACK_ENABLED=true` in environment
+   - Ensure OpenCV is compiled with GStreamer support
+
+3. **Batch processing stuck**
+   - Check Celery workers: `celery -A src.services.celery_app inspect active`
+   - Monitor Redis: `redis-cli monitor`
+   - Verify frame directory exists and contains images
+
+4. **Webcam not detected**
+   - Check camera permissions
+   - Verify no other applications are using camera
+   - Test with: `uv run python -c "import cv2; print(cv2.VideoCapture(0).isOpened())"`
+
+5. **API connection failed**
+   - Ensure API server is running on port 8002
    - Check network connectivity
    - Verify API key is valid
 
-3. **Model training fails**
+6. **Model training fails**
    - Need at least 3 sessions with feedback
    - Check database connection
    - Verify feature extraction is working
+
+7. **High memory usage**
+   - Reduce `IMAGE_STREAM_MAX_FRAME_BYTES`
+   - Lower `IMAGE_STREAM_BACKLOG`
+   - Enable automatic frame cleanup
 
 ### Debug Mode
 Set environment variable for verbose logging:
 ```bash
 export DEBUG=1
-uv run python main.py
+uv run python server.py
+```
+
+### Performance Tuning
+
+#### High-Throughput Streaming
+```bash
+# Increase worker concurrency
+export IMAGE_STREAM_BACKLOG=1000
+
+# Optimize TCP buffers
+export TCP_NODELAY=1
+
+# Use multiple Celery workers
+uv run celery -A src.services.celery_app worker --loglevel=info --queues=batch_processing --concurrency=4 &
+```
+
+#### Low-Latency Processing
+```bash
+# Reduce batch processing limits
+export MAX_REALISTIC_FOCUS_SCORE=90.0
+export FOCUS_BUFFER_SIZE=50
+
+# Increase Celery worker priority
+uv run celery -A src.services.celery_app worker --loglevel=info --queues=batch_processing -Ofair &
+```
+
+### Monitoring
+
+#### System Health
+```bash
+# Check all services
+curl http://localhost:8002/api/v1/health
+curl http://localhost:8002/api/v1/focus/health
+curl http://localhost:8002/api/v1/stream/stats
+
+# Monitor Celery
+celery -A src.services.celery_app inspect stats
+celery -A src.services.celery_app inspect active_queues
+```
+
+#### Log Analysis
+```bash
+# Follow API server logs
+tail -f logs/api.log
+
+# Follow Celery worker logs
+tail -f logs/celery.log
+
+# Monitor Redis
+redis-cli monitor
 ```
 
 ## Contributing
@@ -834,10 +1207,29 @@ This project is licensed under the MIT License.
 
 ## Documentation
 
-- **[Main README](README.md)** - Project overview and quick start
+- **[Main README](README.md)** - Project overview and setup guide
 - **[Focus Algorithm](FOCUS_ALGORITHM.md)** - Detailed algorithm flowcharts and technical specifications
 - **[Focus API Guide](FOCUS_API_README.md)** - Complete API documentation and integration examples
 - **[Demo Clients Guide](examples/README_DEMO_CLIENTS.md)** - Demo client usage and testing instructions
+- **[Streaming Protocol](STREAMING_PROTOCOL.md)** - TCP stream protocol specification and client implementation
+
+## Quick Start Summary
+
+```bash
+# 1. Setup
+git clone <repository>
+cd gaze_tracker
+uv sync
+docker-compose up -d redis
+
+# 2. Start services
+uv run server.py &                    # API + streaming servers
+uv run celery -A src.services.celery_app worker --loglevel=info &  # Workers
+
+# 3. Test
+open examples/web_demo_client.html     # Interactive demo
+curl http://localhost:8002/api/v1/health  # Health check
+```
 
 ## Acknowledgments
 

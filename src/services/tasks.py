@@ -15,11 +15,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 
 from src.database.database import SessionLocal
-from src.database.models import UserSession, User
+from src.database.models import UserSession, User, TrainingTask
 from src.services.ml_service import PersonalizedMLService
 from src.services.batch_service import BatchFocusProcessor
 from src.config import config
 from src.services.celery_app import celery_app
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -343,7 +344,7 @@ def process_session_frames_async(
                         'resources': resource_info
                     }
                 )
-            except:
+            except Exception:
                 break  # Task may have completed
             
             threading.Event().wait(10)  # Update every 10 seconds
@@ -369,7 +370,11 @@ def process_session_frames_async(
         from pathlib import Path
         
         frames_dir = Path(frames_directory)
-        frame_count = len(list(frames_dir.glob('*.png'))) if frames_dir.exists() else 0
+        frame_count = (
+            sum(1 for p in frames_dir.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg'})
+            if frames_dir.exists()
+            else 0
+        )
         
         if frame_count == 0:
             return {

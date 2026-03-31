@@ -13,3 +13,5 @@ htmlcov
 .coverage
 .coverage.*
 focus_heatmap.png
+src/images/session
+src/images/subtasks
