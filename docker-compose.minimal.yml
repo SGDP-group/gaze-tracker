@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: gaze_tracker_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --port 6379 --requirepass ${REDIS_PASSWORD}
+    networks:
+      - gaze_tracker_network
+
+  api:
+    image: lhgrandgtr/focus-tracker:latest
+    container_name: gaze_tracker_api
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    environment:
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=production
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    depends_on:
+      - redis
+    networks:
+      - gaze_tracker_network
+
+networks:
+  gaze_tracker_network:
+    driver: bridge

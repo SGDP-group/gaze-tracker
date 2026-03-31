@@ -4,7 +4,7 @@ FastAPI routes for the Focus Management System API.
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Annotated
 from datetime import datetime
 from collections import defaultdict
 import json
@@ -29,11 +29,10 @@ from src.models.focus_schemas import (
     SessionData, ActiveUsersResponse, ErrorResponse, HealthResponse,
     GroundFrameRequest, GroundFrameResponse, BatchProcessRequest, BatchProcessResponse
 )
-from src.api.dependencies import get_current_user
-from src.services.auth import create_user, get_user_by_id
 from src.services.ml_service import PersonalizedMLService
 from src.services.tasks import train_user_model_async, get_task_status, get_user_training_history, process_session_frames_async
 from src.services.focus_service import focus_tracker
+from src.services.auth import create_user, get_user_by_id
 
 # Initialize services
 ml_service = PersonalizedMLService()
@@ -45,38 +44,33 @@ router = APIRouter()
 @router.post("/users", response_model=UserResponse)
 def create_new_user(user: UserCreate, db: Session = Depends(get_db)):
     """Create a new user with API key."""
-    # Check if user already exists
-    existing_user = get_user_by_id(db, user.user_id)
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User already exists"
-        )
+    # Get or create user
+    db_user = get_user_by_id(db, user.user_id)
+    if not db_user:
+        db_user = create_user(db, user.user_id)
     
-    # Create new user
-    db_user = create_user(db, user.user_id)
     return db_user
 
 
 @router.get("/users/me", response_model=UserResponse)
-def get_current_user_info(current_user: User = Depends(get_current_user)):
+def get_current_user_info():
     """Get current user information."""
-    return current_user
+    # Return a default user response since no authentication
+    return UserResponse(
+        user_id="default_user",
+        api_key="no_auth_required",
+        created_at=datetime.now(),
+        last_active=datetime.now()
+    )
 
 
 @router.post("/sessions", response_model=SessionResponse)
 def create_session(
     session: SessionCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """Create a new focus session."""
-    # Verify user ID matches authenticated user
-    if session.user_id != current_user.user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User ID mismatch"
-        )
+    # No user ID verification - allow any user ID
     
     # Check if session already exists
     existing_session = db.query(UserSession).filter(
@@ -89,7 +83,7 @@ def create_session(
         )
     
     # Create session
-    db_session = UserSession(**session.dict())
+    db_session = UserSession(**session.model_dump())
     db.add(db_session)
     db.commit()
     db.refresh(db_session)
@@ -119,14 +113,14 @@ def create_session(
 
 @router.get("/sessions", response_model=List[SessionResponse])
 def get_user_sessions(
+    user_id: str,
     limit: int = 50,
     offset: int = 0,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """Get user's sessions with pagination."""
     sessions = db.query(UserSession).filter(
-        UserSession.user_id == current_user.user_id
+        UserSession.user_id == user_id
     ).order_by(UserSession.created_at.desc()).offset(offset).limit(limit).all()
     
     return sessions
@@ -135,13 +129,11 @@ def get_user_sessions(
 @router.get("/sessions/{session_id}", response_model=SessionResponse)
 def get_session(
     session_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """Get specific session details."""
     session = db.query(UserSession).filter(
-        UserSession.session_id == session_id,
-        UserSession.user_id == current_user.user_id
+        UserSession.session_id == session_id
     ).first()
     
     if not session:
@@ -156,21 +148,14 @@ def get_session(
 @router.post("/feedback", response_model=FeedbackResponse)
 def create_feedback(
     feedback: FeedbackCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """Submit feedback for a session."""
-    # Verify user ID
-    if feedback.user_id != current_user.user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User ID mismatch"
-        )
+    # No user ID verification - allow any user ID
     
-    # Verify session exists and belongs to user
+    # Verify session exists (no ownership check)
     session = db.query(UserSession).filter(
-        UserSession.session_id == feedback.session_id,
-        UserSession.user_id == current_user.user_id
+        UserSession.session_id == feedback.session_id
     ).first()
     
     if not session:
@@ -201,12 +186,12 @@ def create_feedback(
 
 @router.get("/models", response_model=List[ModelInfo])
 def get_user_models(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    user_id: str,
+    db: Session = Depends(get_db)
 ):
     """Get user's ML models."""
     models = db.query(UserModel).filter(
-        UserModel.user_id == current_user.user_id
+        UserModel.user_id == user_id
     ).order_by(UserModel.model_version.desc()).all()
     
     return models
@@ -215,16 +200,10 @@ def get_user_models(
 @router.post("/models/train", response_model=TrainingResponse)
 def train_user_model(
     training_request: TrainingRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """Train personalized model for user."""
-    # Verify user ID
-    if training_request.user_id != current_user.user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User ID mismatch"
-        )
+    # No user ID verification - allow any user ID
     
     try:
         result = ml_service.train_personalized_model(
@@ -251,12 +230,12 @@ def train_user_model(
 
 @router.get("/recommendations", response_model=List[RecommendationResponse])
 def get_focus_recommendations(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    user_id: str,
+    db: Session = Depends(get_db)
 ):
     """Get personalized focus recommendations."""
     try:
-        recommendations = ml_service.generate_focus_recommendations(db, current_user.user_id)
+        recommendations = ml_service.generate_focus_recommendations(db, user_id)
         
         # Convert database models to response models
         response_recommendations = []
@@ -274,34 +253,38 @@ def get_focus_recommendations(
 
 @router.get("/statistics", response_model=SessionStatistics)
 def get_user_statistics(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    user_id: str,
+    db: Annotated[Session, Depends(get_db)]
 ):
-    """Get user's session statistics."""
+    """
+    Get aggregated user statistics across all sessions.
+    This returns general statistics like total sessions, average focus scores, and productivity trends.
+    
+    Args:
+        user_id: User identifier
+        db: Database session
+        
+    Returns:
+        Aggregated user statistics across all sessions
+    """
     try:
-        stats = ml_service.get_user_statistics(db, current_user.user_id)
+        stats = ml_service.get_user_statistics(db, user_id)
         return SessionStatistics(**stats)
     
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get statistics: {str(e)}"
+            detail=f"Failed to get user statistics: {str(e)}"
         )
 
 
 @router.post("/models/train/async", response_model=AsyncTrainingResponse)
 def train_user_model_async_endpoint(
     training_request: TrainingTaskCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """Start asynchronous model training for user."""
-    # Verify user ID
-    if training_request.user_id != current_user.user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User ID mismatch"
-        )
+    # No user ID verification - allow any user ID
     
     try:
         # Submit async training task
@@ -326,20 +309,12 @@ def train_user_model_async_endpoint(
 
 @router.get("/models/train/status/{task_id}", response_model=TrainingStatusResponse)
 def get_training_task_status(
-    task_id: str,
-    current_user: User = Depends(get_current_user)
+    task_id: str
 ):
     """Get status of a training task."""
     try:
         task_status = get_task_status(task_id)
-        
-        # Verify task belongs to current user (additional security)
-        if task_status.get('result') and 'user_id' in task_status['result']:
-            if task_status['result']['user_id'] != current_user.user_id:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Access denied to this task"
-                )
+        # No user ownership verification
         
         return TrainingStatusResponse(**task_status)
         
@@ -352,13 +327,13 @@ def get_training_task_status(
 
 @router.get("/models/train/history", response_model=List[TrainingHistoryResponse])
 def get_user_training_history_endpoint(
+    user_id: str,
     limit: int = 10,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """Get user's training task history."""
     try:
-        history = get_user_training_history(current_user.user_id, limit)
+        history = get_user_training_history(user_id, limit)
         
         return [TrainingHistoryResponse(**task) for task in history]
         
@@ -371,16 +346,16 @@ def get_user_training_history_endpoint(
 
 @router.get("/models/train/tasks", response_model=List[TrainingTaskResponse])
 def get_user_training_tasks(
+    user_id: str,
     limit: int = 20,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """Get user's training tasks from database."""
     try:
         from src.database.models import TrainingTask
         
         tasks = db.query(TrainingTask).filter(
-            TrainingTask.user_id == current_user.user_id
+            TrainingTask.user_id == user_id
         ).order_by(TrainingTask.created_at.desc()).limit(limit).all()
         
         return tasks
@@ -565,10 +540,86 @@ def end_focus_session(batch_request: BatchProcessRequest, db: Session = Depends(
         )
 
 
-@router.get("/focus/session/{session_id}/result", response_model=SessionData)
-def get_batch_processing_result(session_id: str, db: Session = Depends(get_db)):
+@router.get("/focus/session/{user_id}/history", response_model=List[SessionData])
+def get_session_history(
+    user_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    limit: int = 10
+):
     """
-    Get the result of batch processing for a completed session.
+    Get historical session data for a user.
+    This returns completed sessions with their comprehensive analytics.
+    
+    Args:
+        user_id: User identifier
+        limit: Maximum number of sessions to return
+        db: Database session
+        
+    Returns:
+        List of historical session data with comprehensive analytics
+    """
+    try:
+        # Get historical sessions from database
+        from src.database.models import UserSession
+        sessions = db.query(UserSession).filter(
+            UserSession.user_id == user_id
+        ).order_by(UserSession.start_time.desc()).limit(limit).all()
+        
+        session_data_list = []
+        for session in sessions:
+            # Parse raw session data
+            session_data_raw = json.loads(session.raw_session_data) if session.raw_session_data else {}
+            
+            # Convert comprehensive analytics to response format
+            comprehensive_analytics = None
+            if session_data_raw.get("comprehensive_analytics"):
+                try:
+                    analytics_dict = session_data_raw["comprehensive_analytics"]
+                    comprehensive_analytics = {
+                        "deep_work_metrics": analytics_dict.get("deep_work_metrics", {}),
+                        "distraction_analytics": analytics_dict.get("distraction_analytics", {}),
+                        "biological_trends": analytics_dict.get("biological_trends", {}),
+                        "gamification_stats": analytics_dict.get("gamification_stats", {}),
+                        "insights": analytics_dict.get("insights", [])
+                    }
+                except Exception as e:
+                    logger.error(f"Error formatting comprehensive analytics: {e}")
+            
+            session_data = SessionData(
+                user_id=session.user_id,
+                session_start=session.start_time,
+                session_end=session.end_time,
+                total_frames=session.total_frames,
+                focused_frames=session.focused_frames,
+                distracted_frames=session.distracted_frames,
+                away_frames=session.away_frames,
+                focus_score=session.focus_score,
+                baseline_angle=session.baseline_angle,
+                average_fps=session_data_raw.get("average_fps", 30.0),
+                productivity_level=session_data_raw.get("productivity_level", "MODERATELY_PRODUCTIVE"),
+                session_duration_seconds=session.duration_seconds,
+                ground_frame_calibrated=session_data_raw.get("ground_frame_calibrated", False),
+                reference_angle=session_data_raw.get("reference_angle"),
+                gaze_consistency_score=session_data_raw.get("gaze_consistency_score"),
+                average_gaze_deviation=session_data_raw.get("average_gaze_deviation"),
+                comprehensive_analytics=comprehensive_analytics
+            )
+            session_data_list.append(session_data)
+        
+        return session_data_list
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get session history: {str(e)}"
+        )
+
+
+@router.get("/focus/session/{session_id}/result", response_model=SessionData)
+def get_session_result(session_id: str, db: Annotated[Session, Depends(get_db)]):
+    """
+    Get the result of a specific completed session.
+    This returns detailed analytics for a particular session.
     
     Args:
         session_id: Session identifier
@@ -637,10 +688,11 @@ def get_batch_processing_result(session_id: str, db: Session = Depends(get_db)):
         )
 
 
-@router.get("/focus/session/{user_id}", response_model=SessionData)
-def get_session_data(user_id: str, db: Session = Depends(get_db)):
+@router.get("/focus/session/{user_id}/current", response_model=SessionData)
+def get_current_session_data(user_id: str, db: Annotated[Session, Depends(get_db)]):
     """
-    Get current session data for a user with comprehensive analytics.
+    Get current active session data for a user with comprehensive analytics.
+    This returns detailed information about the ongoing session.
     
     Args:
         user_id: User identifier

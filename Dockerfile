@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
     redis-tools \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
@@ -38,16 +38,11 @@ COPY src/ ./src/
 COPY model/ ./model/
 COPY examples/ ./examples/
 COPY scripts/ ./scripts/
-COPY BATCH_WORKERS_README.md ./
+COPY server.py ./
 
-# Create necessary directories
-RUN mkdir -p /app/data /app/logs /app/.celery_pids /tmp/test_session_frames
-
-# Set permissions for directories
-RUN chmod +x scripts/*.sh
-
-# Copy MediaPipe model files (downloaded during build if needed)
-RUN mkdir -p /app/model/mediapipe && \
+# Create necessary directories, set permissions, and handle MediaPipe model
+RUN mkdir -p /app/data /app/logs /app/.celery_pids /tmp/test_session_frames /app/model/mediapipe && \
+    chmod +x scripts/*.sh && \
     if [ ! -f "/app/model/mediapipe/detector.tflite" ]; then \
         echo "MediaPipe model will be mounted as volume"; \
     fi
@@ -60,7 +55,7 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8002/health || exit 1
 
 # Default command for API server
-CMD ["uv", "run", "uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8002"]
+CMD ["uv", "run", "uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8002"]
 
 # Labels for metadata
 LABEL maintainer="Focus Tracker Team" \
